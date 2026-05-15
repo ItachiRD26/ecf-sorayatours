@@ -24,7 +24,7 @@ const MOTIVOS_DEBITO  = ["Intereses por mora","Gastos adicionales","Diferencia d
 
 const ITEM_VACIO: LineaServicio = {
   codigo: "", descripcion: "", modo: "por_persona",
-  cant: 1, precio: 0, descuentoMonto: 0, itbis: 0,
+  cant: 1, pax: 0, precio: 0, descuentoMonto: 0, itbis: 0,
 };
 
 function clean<T extends object>(obj: T): Partial<T> {
