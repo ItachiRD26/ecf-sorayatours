@@ -1,26 +1,126 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --font-serif: "Libre Baskerville", Georgia, serif;
+  --font-sans:  "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono:  "IBM Plex Mono", "Courier New", monospace;
+
+  --c-bg:        #f3f4f6;
+  --c-surface:   #ffffff;
+  --c-border:    #e5e7eb;
+  --c-border-lt: #f3f4f6;
+
+  --c-text-1: #111111;
+  --c-text-2: #374151;
+  --c-text-3: #6b7280;
+  --c-text-4: #9ca3af;
+
+  --c-brand:        #0e7490;
+  --c-brand-bg:     #ecfeff;
+  --c-brand-border: #a5f3fc;
+
+  --c-green:        #166534;
+  --c-green-bg:     #f0faf4;
+  --c-green-border: #bbf7d0;
+
+  --c-yellow:        #92400e;
+  --c-yellow-bg:     #fffbeb;
+  --c-yellow-border: #fde68a;
+
+  --c-red:        #991b1b;
+  --c-red-bg:     #fef2f2;
+  --c-red-border: #fecaca;
+
+  --c-blue:        #1d4ed8;
+  --c-blue-bg:     #eff6ff;
+  --c-blue-border: #bfdbfe;
+
+  --sidebar-w: 224px;
+  --topbar-h:  52px;
+  --radius:    4px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  height: 100%;
+  font-family: var(--font-sans);
+  background: var(--c-bg);
+  color: var(--c-text-1);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-brand);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-text-4); }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.fade-in { animation: fadeIn 0.2s ease-out both; }
+
+.hamburger-btn { display: none !important; }
+@media (max-width: 1023px) {
+  .hamburger-btn { display: flex !important; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 199;
+}
+.sidebar-overlay.open { display: block; }
+
+.sidebar-responsive {
+  position: fixed !important;
+  top: 0; left: 0; bottom: 0;
+  z-index: 200;
+  transform: translateX(-100%);
+  transition: transform 0.22s ease;
+}
+.sidebar-responsive.open { transform: translateX(0); }
+
+@media (min-width: 1024px) {
+  .sidebar-responsive {
+    position: relative !important;
+    transform: none !important;
+    transition: none;
+  }
+  .sidebar-overlay { display: none !important; }
+}
+
+.factura-grid {
+  grid-template-columns: 320px 1fr !important;
+}
+@media (max-width: 900px) {
+  .factura-grid {
+    grid-template-columns: 1fr !important;
+  }
 }
