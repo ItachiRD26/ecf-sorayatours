@@ -229,10 +229,12 @@ function totalesGravados(f: Factura): string {
   const t      = calcTotales(f.items);
   const exentos = f.items.filter(i => i.itbis === 0).reduce((s, i) => s + calcLinea(i).sub, 0);
   const grav   = t.sub - exentos;
+  // ITBIS1 = tasa como entero (18), TotalITBIS1 = monto — ambos según ejemplo DGII real
   return `<Totales>
     <MontoGravadoTotal>${fmt(grav)}</MontoGravadoTotal>
     <MontoGravadoI1>${fmt(grav)}</MontoGravadoI1>
     <MontoExento>${fmt(exentos)}</MontoExento>
+    ${t.itbis > 0 ? `<ITBIS1>18</ITBIS1>` : ""}
     <TotalITBIS>${fmt(t.itbis)}</TotalITBIS>
     <TotalITBIS1>${fmt(t.itbis)}</TotalITBIS1>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
