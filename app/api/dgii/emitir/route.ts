@@ -1,13 +1,12 @@
-import { NextRequest, NextResponse } from "next/server";
-import { adminAuth, adminDb }        from "@/lib/firebase-admin";
-import { buildXML, buildRFCEXml, LIMITE_RFCE } from "@/lib/dgii/xml-builder";
-import { firmarXML }                 from "@/lib/dgii/xml-signer";
-import { enviarECF, enviarRFCE }     from "@/lib/dgii/dgii-client";
-import { generarURLQR, formatFechaQR, formatFechaHoraQR } from "@/lib/dgii/qr-builder";
-import type { Factura, Cliente }     from "@/types";
-import { calcTotales }               from "@/types";
+import { NextRequest, NextResponse }                    from "next/server";
+import { adminAuth, adminDb }                           from "@/lib/firebase-admin";
+import { buildXML, buildRFCEXml, LIMITE_RFCE }         from "@/lib/dgii/xml-builder";
+import { firmarXML }                                    from "@/lib/dgii/xml-signer";
+import { enviarECF, enviarRFCE }                        from "@/lib/dgii/dgii-client";
+import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
+import type { Factura, Cliente }                        from "@/types";
+import { calcTotales }                                  from "@/types";
 
-// Verificar sesión
 async function verificarSesion(req: NextRequest): Promise<string | null> {
   const cookie = req.cookies.get("__session")?.value;
   if (!cookie) return null;
@@ -23,12 +22,11 @@ export async function POST(req: NextRequest) {
     const uid = await verificarSesion(req);
     if (!uid) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    // 2. Obtener facturaId del body
-    const body = await req.json();
-    const { facturaId } = body;
+    // 2. facturaId
+    const { facturaId } = await req.json();
     if (!facturaId) return NextResponse.json({ error: "facturaId requerido" }, { status: 400 });
 
-    // 3. Cargar factura y datos de Firestore
+    // 3. Cargar factura + config empresa desde Firestore
     const [facturaSnap, empresaSnap] = await Promise.all([
       adminDb.collection("facturas").doc(facturaId).get(),
       adminDb.collection("config").doc("empresa").get(),
@@ -41,80 +39,82 @@ export async function POST(req: NextRequest) {
     const factura = { id: facturaId, ...facturaSnap.data() } as Factura;
     const empresa = empresaSnap.data() as { nombre: string; rnc: string; direccion: string; telefono: string };
 
-    // Verificar que no haya sido ya enviada
+    // Evitar re-envíos
     if (factura.estadoDGII && factura.estadoDGII !== "pendiente") {
-      return NextResponse.json({ error: `Factura ya procesada: ${factura.estadoDGII}` }, { status: 400 });
+      return NextResponse.json(
+        { error: `Factura ya procesada: ${factura.estadoDGII}` },
+        { status: 400 }
+      );
     }
 
     // 4. Cargar cliente si aplica
+    // E43 y E47 no tienen comprador con RNC — clienteId puede estar vacío
     let cliente: Cliente | undefined;
     if (factura.clienteId && factura.clienteId !== "walk-in") {
-      const clienteSnap = await adminDb.collection("clientes").doc(factura.clienteId).get();
-      if (clienteSnap.exists) cliente = { id: clienteSnap.id, ...clienteSnap.data() } as Cliente;
+      const snap = await adminDb.collection("clientes").doc(factura.clienteId).get();
+      if (snap.exists) cliente = { id: snap.id, ...snap.data() } as Cliente;
     }
 
-    // 5. Construir XML
-    const xmlSinFirma = buildXML(factura, cliente, empresa);
-
-    // 6. Firmar XML
-    const xmlFirmado = await firmarXML(xmlSinFirma);
-
-    // 7. Decidir si enviar como RFCE o e-CF completo
+    // 5. Calcular totales
     const totales = calcTotales(factura.items);
     const esRFCE  = factura.tipoECF === "E32" && totales.total < LIMITE_RFCE;
 
-    let trackId:   string;
-    let estadoDGII: string;
-    let signatureValue: string;
+    // 6. Construir + firmar XML principal
+    const xmlSinFirma = buildXML(factura, cliente, empresa);
+    const xmlFirmado  = await firmarXML(xmlSinFirma);
 
-    // Extraer SignatureValue del XML firmado para el QR
+    // 7. Extraer SignatureValue para el QR y el código de seguridad
     const sigMatch = xmlFirmado.match(/<SignatureValue>([\s\S]*?)<\/SignatureValue>/);
-    signatureValue  = sigMatch?.[1]?.replace(/\s/g, "") ?? "";
+    const signatureValue = sigMatch?.[1]?.replace(/\s/g, "") ?? "";
+
+    // El código de seguridad que imprime la factura = SHA-256 del SignatureValue (primeros 6 chars)
+    // Mismo cálculo que usa el QR — así coinciden siempre
+    const codigoSeguridad = calcularCodigoSeguridad(signatureValue);
+
+    let trackId:    string;
+    let estadoDGII: string;
 
     if (esRFCE) {
-      // Enviar resumen RFCE
-      const rfceXml     = buildRFCEXml(factura, empresa);
-      const rfceFirmado = await firmarXML(rfceXml.replace("</ECF>", "</RFCE>").replace("<ECF>", "<RFCE>"));
+      // E32 < RD$250,000 → enviar el resumen RFCE primero (por fc.dgii.gov.do)
+      // La factura completa se sube manualmente al portal de DGII después de que el resumen sea aceptado
+      const rfceXml     = buildRFCEXml(factura, empresa); // ya retorna <RFCE>...</RFCE>
+      const rfceFirmado = await firmarXML(rfceXml);
       const resultado   = await enviarRFCE(rfceFirmado);
+
       trackId    = resultado.trackId;
-      estadoDGII = resultado.estado || "Aceptado";
+      estadoDGII = resultado.estado || "Enviado"; // "Enviado" mientras se procesa, no "Aceptado"
     } else {
-      // Enviar XML completo
+      // Todos los demás tipos: enviar eCF completo
       trackId    = await enviarECF(xmlFirmado);
-      estadoDGII = "Enviado"; // Se consulta luego con el trackId
+      estadoDGII = "Enviado";
     }
 
-    // 8. Generar URL del QR
+    // 8. Generar URL del timbre QR
     const fechaEmision = formatFechaQR(factura.fecha);
     const fechaFirma   = formatFechaHoraQR(new Date().toISOString());
-    const urlQR        = generarURLQR({
-      tipoECF:        factura.tipoECF,
-      rncEmisor:      empresa.rnc.replace(/\D/g, ""),
-      rncComprador:   cliente?.rnc?.replace(/\D/g, ""),
-      eNCF:           factura.eCF,
+    const urlQR = generarURLQR({
+      tipoECF:       factura.tipoECF,
+      rncEmisor:     empresa.rnc.replace(/\D/g, ""),
+      rncComprador:  cliente?.rnc?.replace(/\D/g, ""),
+      eNCF:          factura.eCF,
       fechaEmision,
-      montoTotal:     totales.total,
+      montoTotal:    totales.total,
       fechaFirma,
       signatureValue,
       esRFCE,
     });
 
-    // 9. Guardar resultado en Firestore
+    // 9. Guardar todo en Firestore
     await adminDb.collection("facturas").doc(facturaId).update({
       estadoDGII,
-      trackIdDGII:     trackId,
+      trackIdDGII:    trackId,
       xmlFirmado,
       urlQR,
-      fechaEnvioDGII:  new Date().toISOString(),
-      codigoSeguridad: signatureValue.substring(0, 6),
+      codigoSeguridad,          // SHA-256 correcto, coincide con el QR
+      fechaEnvioDGII: new Date().toISOString(),
     });
 
-    return NextResponse.json({
-      success:    true,
-      trackId,
-      estadoDGII,
-      urlQR,
-    });
+    return NextResponse.json({ success: true, trackId, estadoDGII, urlQR, codigoSeguridad });
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Error desconocido";

@@ -17,7 +17,8 @@ interface QRParams {
 }
 
 // Los primeros 6 caracteres del SHA-256 del SignatureValue
-function calcularCodigoSeguridad(signatureValue: string): string {
+// Exportado porque emitir/route.ts lo necesita para guardarlo en Firestore
+export function calcularCodigoSeguridad(signatureValue: string): string {
   const md = forge.md.sha256.create();
   md.update(signatureValue, "utf8");
   return md.digest().toHex().substring(0, 6);

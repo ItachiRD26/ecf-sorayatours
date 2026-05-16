@@ -18,19 +18,28 @@ export async function POST(req: NextRequest) {
     if (!uid) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     const { facturaId } = await req.json();
-    const snap = await adminDb.collection("facturas").doc(facturaId).get();
-    if (!snap.exists) return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 });
+    if (!facturaId) return NextResponse.json({ error: "facturaId requerido" }, { status: 400 });
 
-    const factura = snap.data()!;
-    const empresa = (await adminDb.collection("config").doc("empresa").get()).data()!;
+    const [facturaSnap, empresaSnap] = await Promise.all([
+      adminDb.collection("facturas").doc(facturaId).get(),
+      adminDb.collection("config").doc("empresa").get(),
+    ]);
 
-    // Construir XML de anulación (ANECF)
+    if (!facturaSnap.exists) {
+      return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 });
+    }
+
+    const factura = facturaSnap.data()!;
+    const empresa = empresaSnap.data()!;
+    const rnc     = (empresa.rnc as string).replace(/\D/g, "");
+
+    // ANECF — formato de anulación según XSD de DGII
     const xmlAnulacion = `<?xml version="1.0" encoding="UTF-8"?>
 <ANECF>
   <Encabezado>
     <Version>1.0</Version>
     <IdDoc>
-      <RNCEmisor>${empresa.rnc.replace(/\D/g, "")}</RNCEmisor>
+      <RNCEmisor>${rnc}</RNCEmisor>
       <TipoAnulacion>1</TipoAnulacion>
     </IdDoc>
   </Encabezado>
@@ -42,14 +51,13 @@ export async function POST(req: NextRequest) {
   </DetalleAnulacion>
 </ANECF>`;
 
-    const xmlFirmado = await firmarXML(
-      xmlAnulacion.replace("</ANECF>", "").replace("</ANECF>", "") + "</ANECF>"
-    );
-
+    // firmarXML inserta la firma antes del último tag de cierre (</ANECF>)
+    const xmlFirmado = await firmarXML(xmlAnulacion);
     await anularENCF(xmlFirmado);
 
     await adminDb.collection("facturas").doc(facturaId).update({
       estadoDGII:     "Anulada",
+      estado:         "anulada",
       fechaAnulacion: new Date().toISOString(),
     });
 
