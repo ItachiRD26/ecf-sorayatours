@@ -62,8 +62,8 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 // ─── Enviar e-CF normal → retorna TrackId ────────────────────────────────────
-export async function enviarECF(xmlFirmado: string): Promise<string> {
-  const token = await getToken();
+export async function enviarECF(xmlFirmado: string, tokenExterno?: string): Promise<string> {
+  const token = tokenExterno || await getToken();
   const url   = `${getECFBase()}/recepcion/api/ecf`;
   const form  = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "ecf.xml");
@@ -78,8 +78,8 @@ export async function enviarECF(xmlFirmado: string): Promise<string> {
 }
 
 // ─── Enviar RFCE (resumen E32 < RD$250,000) — usa fc.dgii.gov.do ─────────────
-export async function enviarRFCE(xmlFirmado: string): Promise<{ trackId: string; estado: string }> {
-  const token = await getToken();
+export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string): Promise<{ trackId: string; estado: string }> {
+  const token = tokenExterno || await getToken();
   const url   = `${getFCBase()}/recepcionfc/api/rfce`;
   const form  = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "rfce.xml");

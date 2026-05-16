@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     if (!uid) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
     // 2. facturaId
-    const { facturaId } = await req.json();
+    const { facturaId, token: tokenManual } = await req.json();
     if (!facturaId) return NextResponse.json({ error: "facturaId requerido" }, { status: 400 });
 
     // 3. Cargar factura + config empresa desde Firestore
@@ -89,13 +89,13 @@ export async function POST(req: NextRequest) {
       // La factura completa se sube manualmente al portal de DGII después de que el resumen sea aceptado
       const rfceXml     = buildRFCEXml(factura, empresa); // ya retorna <RFCE>...</RFCE>
       const rfceFirmado = await firmarXML(rfceXml);
-      const resultado   = await enviarRFCE(rfceFirmado);
+      const resultado   = await enviarRFCE(rfceFirmado, tokenManual);
 
       trackId    = resultado.trackId;
       estadoDGII = resultado.estado || "Enviado"; // "Enviado" mientras se procesa, no "Aceptado"
     } else {
       // Todos los demás tipos: enviar eCF completo
-      trackId    = await enviarECF(xmlFirmado);
+      trackId    = await enviarECF(xmlFirmado, tokenManual);
       estadoDGII = "Enviado";
     }
 

@@ -88,7 +88,7 @@ export default function CertificacionPage() {
       const res  = await fetch("/api/dgii/emitir", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ facturaId }),
+        body:    JSON.stringify({ facturaId, token }),  // token del paso 3
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
