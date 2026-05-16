@@ -25,6 +25,7 @@ export default function CertificacionPage() {
   const [descargando,   setDescargando]   = useState(false);
   const [subiendoFirma, setSubiendoFirma] = useState(false);
   const [testResult,   setTestResult]   = useState<string>("");
+  const [testDetail,   setTestDetail]   = useState<string>("");
   const [testeando,    setTesteando]    = useState(false);
 
   const dePrueba = facturas
@@ -272,7 +273,7 @@ export default function CertificacionPage() {
           <b>Test de conexión</b> — Verifica si Vercel puede llegar a DGII con tu token.
           {testResult && <span style={{ marginLeft:8, fontWeight:600,
             color: testResult.includes("✅")?"#166534":testResult.includes("❌")?"#991b1b":"#92400e" }}>
-            {testResult}
+            {testResult}{testDetail && <span style={{marginLeft:8,fontSize:11,color:'#6b7280'}}>{testDetail}</span>}
           </span>}
         </div>
         <button onClick={testConexionDGII} disabled={testeando || !tokenValido}

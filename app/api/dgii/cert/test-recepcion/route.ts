@@ -1,5 +1,3 @@
-// Prueba si el token puede llegar al endpoint de recepción de DGII
-// Envía un POST vacío solo para ver qué responde DGII (400=llegó, 404=bloqueado)
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 
@@ -17,26 +15,45 @@ export async function POST(req: NextRequest) {
   const { token } = await req.json();
   if (!token) return NextResponse.json({ error: "token requerido" }, { status: 400 });
 
+  // Decodificar JWT para ver si está expirado
+  let tokenInfo = { expirado: false, expira: "", segundosRestantes: 0 };
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
+    const ahora   = Math.floor(Date.now() / 1000);
+    const expira  = new Date(payload.exp * 1000).toISOString();
+    const restantes = payload.exp - ahora;
+    tokenInfo = {
+      expirado:         restantes <= 0,
+      expira,
+      segundosRestantes: Math.max(0, restantes),
+    };
+  } catch { /* ignore */ }
+
   const url = "https://ecf.dgii.gov.do/certecf/recepcion/api/ecf";
 
-  // POST vacío solo para ver si el endpoint responde con algo diferente a 404
   const res  = await fetch(url, {
     method:  "POST",
     headers: { Authorization: `Bearer ${token}` },
-    body:    new FormData(), // form vacío
+    body:    new FormData(),
   });
 
   const dgiiStatus    = res.status;
   const dgiiRespuesta = await res.text();
 
+  const interpretacion =
+    tokenInfo.expirado                     ? "⏰ TOKEN EXPIRADO — obtén uno nuevo en el Paso 3" :
+    dgiiStatus === 400                     ? "✅ DGII recibió la petición — Vercel SÍ llega a DGII" :
+    dgiiStatus === 401                     ? "✅ DGII alcanzable — token rechazado pero endpoint existe" :
+    dgiiStatus === 403                     ? "❌ Host not in allowlist — IP de Vercel bloqueada, necesitas VPS" :
+    dgiiStatus === 404 && !tokenInfo.expirado ? "❓ 404 con token vigente — investigando" :
+    `HTTP ${dgiiStatus}`;
+
   return NextResponse.json({
-    dgii_status:    dgiiStatus,
-    dgii_respuesta: dgiiRespuesta,
-    interpretacion:
-      dgiiStatus === 400 ? "✅ DGII recibió la petición — el VPS en DR no es necesario O el endpoint acepta IPs externas" :
-      dgiiStatus === 401 ? "✅ DGII alcanzable — token inválido o expirado" :
-      dgiiStatus === 403 ? "❌ Host not in allowlist — IP de Vercel bloqueada, necesitas VPS en DR" :
-      dgiiStatus === 404 ? "⚠️ 404 — puede ser token expirado o IP bloqueada" :
-      `HTTP ${dgiiStatus}`,
+    token_expirado:       tokenInfo.expirado,
+    token_expira:         tokenInfo.expira,
+    token_minutos_restantes: Math.floor(tokenInfo.segundosRestantes / 60),
+    dgii_status:          dgiiStatus,
+    dgii_respuesta:       dgiiRespuesta.substring(0, 300),
+    interpretacion,
   });
 }
