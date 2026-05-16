@@ -24,6 +24,8 @@ export default function CertificacionPage() {
   const [tokenExpira,   setTokenExpira]   = useState("");
   const [descargando,   setDescargando]   = useState(false);
   const [subiendoFirma, setSubiendoFirma] = useState(false);
+  const [testResult,   setTestResult]   = useState<string>("");
+  const [testeando,    setTesteando]    = useState(false);
 
   const dePrueba = facturas
     .filter((f) => (f as any).esDePrueba === true)
@@ -122,6 +124,23 @@ export default function CertificacionPage() {
 
   const aceptados  = dePrueba.filter((f) => f.estadoDGII === "Aceptado").length;
   const pendientes = dePrueba.filter(pendiente).length;
+
+  const testConexionDGII = async () => {
+    if (!token) { push({ tipo: "warning", mensaje: "Necesitas el token del Paso 3 primero." }); return; }
+    setTesteando(true);
+    setTestResult("Probando...");
+    try {
+      const res  = await fetch("/api/dgii/cert/test-recepcion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      setTestResult(`HTTP ${data.dgii_status} — ${data.interpretacion}`);
+    } catch (e: unknown) {
+      setTestResult("Error: " + String(e));
+    } finally { setTesteando(false); }
+  };
 
   const tokenValido = !!token;
   const tokenMinutos = tokenExpira
@@ -244,6 +263,26 @@ export default function CertificacionPage() {
       <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:4, padding:"12px 16px", marginBottom:20, fontFamily:sans, fontSize:12, color:"#78350f" }}>
         <b>Orden que exige DGII:</b> Grupo 1 (E31, E32≥250k, E41, E43, E44, E45, E46, E47) →
         Grupo 2 (E33, E34) → Grupo 3 (RFCE por API) → Grupo 4 (E32 &lt;250k: subir al portal manualmente).
+      </div>
+
+      {/* ── Test de conexión ── */}
+      <div style={{ background:"#f0f9ff", border:"1px solid #bae6fd", borderRadius:4,
+        padding:"12px 16px", marginBottom:20, display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+        <div style={{ flex:1, fontFamily:sans, fontSize:12, color:"#075985", lineHeight:1.5 }}>
+          <b>Test de conexión</b> — Verifica si Vercel puede llegar a DGII con tu token.
+          {testResult && <span style={{ marginLeft:8, fontWeight:600,
+            color: testResult.includes("✅")?"#166534":testResult.includes("❌")?"#991b1b":"#92400e" }}>
+            {testResult}
+          </span>}
+        </div>
+        <button onClick={testConexionDGII} disabled={testeando || !tokenValido}
+          style={{ padding:"7px 16px", borderRadius:4, border:"none",
+            cursor: tokenValido ? "pointer" : "not-allowed",
+            background: tokenValido ? "#0e7490" : "#e5e7eb",
+            color: tokenValido ? "#fff" : "#9ca3af",
+            fontSize:12, fontFamily:sans, fontWeight:600 }}>
+          {testeando ? "Probando..." : "🔌 Probar conexión DGII"}
+        </button>
       </div>
 
       {/* ── Tabla ── */}
