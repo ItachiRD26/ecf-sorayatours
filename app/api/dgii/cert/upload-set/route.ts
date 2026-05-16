@@ -45,7 +45,8 @@ export async function POST(req: NextRequest) {
     const workbook  = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet     = workbook.Sheets[sheetName];
-    const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+    // raw: false → SheetJS devuelve el string exacto del Excel (preserva "15" vs "15.00", "450.0000" vs "450.00")
+  const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
 
     if (rawRows.length === 0)
       return NextResponse.json({ error: "El Excel está vacío" }, { status: 400 });
@@ -106,7 +107,8 @@ export async function getAllRowsFromStorage(): Promise<Record<string, unknown>[]
 
   const workbook  = XLSX.read(buffer, { type: "buffer" });
   const sheet     = workbook.Sheets[workbook.SheetNames[0]];
-  const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+  // raw: false → SheetJS devuelve el string exacto del Excel (preserva "15" vs "15.00", "450.0000" vs "450.00")
+  const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
 
   return rawRows.map(row => {
     const out: Record<string, unknown> = {};

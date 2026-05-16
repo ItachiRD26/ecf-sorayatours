@@ -91,8 +91,6 @@ const optDate = (tag: string, val: string) =>
   val ? `<${tag}>${val}</${tag}>` : "";
 const optNum2 = (tag: string, val: string) =>
   val ? `<${tag}>${fmt2(val)}</${tag}>` : "";
-const optNum4 = (tag: string, val: string) =>
-  val ? `<${tag}>${fmt4(val)}</${tag}>` : "";
 const optInt = (tag: string, val: string) =>
   val ? `<${tag}>${fmtInt(val)}</${tag}>` : "";
 
@@ -136,7 +134,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
   const tipoPago     = raw(row,"tipopago","tipo_pago") || "1";
-  const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos") || "01";
+  const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
   const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
   const terminoPago  = raw(row,"terminopago","termino_pago");
 
@@ -146,7 +144,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${tieneFechaVencim && vencim ? `<FechaVencimientoSecuencia>${vencim}</FechaVencimientoSecuencia>` : ""}
     ${tieneNotaCredito ? `<IndicadorNotaCredito>${indNotaCred || "0"}</IndicadorNotaCredito>` : ""}
     ${indMontoGrav !== "" ? `<IndicadorMontoGravado>${indMontoGrav}</IndicadorMontoGravado>` : ""}
-    ${tieneIngresos ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
+    ${tieneIngresos && tipoIngr ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
     <TipoPago>${tipoPago}</TipoPago>
     ${optDate("FechaLimitePago", fechaLimPago)}
     ${opt("TerminoPago", terminoPago)}
@@ -271,9 +269,29 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${optNum2("MontoExento", montoEx || montoTot)}
     <MontoTotal>${fmt2(montoTot)}</MontoTotal>
   </Totales>`;
-  } else if (tipo === "44" || tipo === "46") {
+  } else if (tipo === "44") {
+    // E44: régimen especial — solo exento + total
     totalesXml = `<Totales>
     ${optNum2("MontoExento", montoEx)}
+    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
+    ${optNum2("MontoPeriodo", montoPer)}
+    ${optNum2("ValorPagar", valorPag)}
+  </Totales>`;
+  } else if (tipo === "46") {
+    // E46: exportaciones — usa MontoGravadoI3 con ITBIS3=0
+    totalesXml = `<Totales>
+    ${optNum2("MontoGravadoTotal", gravTot || gravI3)}
+    ${optNum2("MontoGravadoI1", gravI1)}
+    ${optNum2("MontoGravadoI2", gravI2)}
+    ${optNum2("MontoGravadoI3", gravI3)}
+    ${optNum2("MontoExento", montoEx)}
+    ${itbis1 !== "" ? `<ITBIS1>${fmtInt(itbis1)}</ITBIS1>` : ""}
+    ${itbis2 !== "" ? `<ITBIS2>${fmtInt(itbis2)}</ITBIS2>` : ""}
+    ${itbis3 !== "" ? `<ITBIS3>${fmtInt(itbis3)}</ITBIS3>` : ""}
+    ${optNum2("TotalITBIS", totItbis)}
+    ${optNum2("TotalITBIS1", totItbis1)}
+    ${optNum2("TotalITBIS2", totItbis2)}
+    ${optNum2("TotalITBIS3", totItbis3)}
     <MontoTotal>${fmt2(montoTot)}</MontoTotal>
     ${optNum2("MontoPeriodo", montoPer)}
     ${optNum2("ValorPagar", valorPag)}
@@ -351,18 +369,16 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     }
 
     // Cantidad: entero si es número redondo
-    const cantNum = parseFloat(cant);
-    const cantStr = Number.isInteger(cantNum) ? String(cantNum) : fmt2(cantNum);
 
     itemXml += `
       <NombreItem>${esc(nom.substring(0,80))}</NombreItem>
       <IndicadorBienoServicio>${indBS}</IndicadorBienoServicio>
       ${descItem ? `<DescripcionItem>${descItem}</DescripcionItem>` : ""}
-      <CantidadItem>${cantStr}</CantidadItem>
+      <CantidadItem>${cant || "1"}</CantidadItem>
       ${opt("UnidadMedida", unidMed)}
       ${optDate("FechaElaboracion", fechaElab)}
       ${optDate("FechaVencimientoItem", fechaVencI)}
-      <PrecioUnitarioItem>${fmt4(precio)}</PrecioUnitarioItem>
+      <PrecioUnitarioItem>${precio || "0"}</PrecioUnitarioItem>
       ${optNum2("DescuentoMonto", descMonto)}
       <MontoItem>${fmt2(mItem)}</MontoItem>`;
 
@@ -384,7 +400,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
       <NombreItem>Servicio</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
       <CantidadItem>1</CantidadItem>
-      <PrecioUnitarioItem>${fmt4(mBase)}</PrecioUnitarioItem>
+      <PrecioUnitarioItem>${fmt2(mBase)}</PrecioUnitarioItem>
       <MontoItem>${fmt2(mBase)}</MontoItem>
     </Item>`);
   }
