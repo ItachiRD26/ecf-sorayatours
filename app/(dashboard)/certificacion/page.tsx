@@ -25,6 +25,7 @@ export default function CertificacionPage() {
   const [descargando,   setDescargando]   = useState(false);
   const [subiendoFirma, setSubiendoFirma] = useState(false);
   const [testResult,   setTestResult]   = useState<string>("");
+  const [descargando4,  setDescargando4]  = useState<string | null>(null);
   const [testDetail,   setTestDetail]   = useState<string>("");
   const [testeando,    setTesteando]    = useState(false);
 
@@ -125,6 +126,26 @@ export default function CertificacionPage() {
 
   const aceptados  = dePrueba.filter((f) => f.estadoDGII === "Aceptado").length;
   const pendientes = dePrueba.filter(pendiente).length;
+
+  const descargarXML = async (eNCF: string) => {
+    setDescargando4(eNCF);
+    try {
+      const res = await fetch("/api/dgii/cert/descargar-xmls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eNCF }),
+      });
+      if (!res.ok) { push({ tipo: "error", mensaje: "Error generando XML" }); return; }
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href = url; a.download = `${eNCF}.xml`; a.click();
+      URL.revokeObjectURL(url);
+      push({ tipo: "success", mensaje: `${eNCF}.xml descargado — súbelo al portal certecf` });
+    } catch (e: unknown) {
+      push({ tipo: "error", mensaje: String(e) });
+    } finally { setDescargando4(null); }
+  };
 
   const testConexionDGII = async () => {
     if (!token) { push({ tipo: "warning", mensaje: "Necesitas el token del Paso 3 primero." }); return; }
@@ -264,6 +285,44 @@ export default function CertificacionPage() {
       <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:4, padding:"12px 16px", marginBottom:20, fontFamily:sans, fontSize:12, color:"#78350f" }}>
         <b>Orden que exige DGII:</b> Grupo 1 (E31, E32≥250k, E41, E43, E44, E45, E46, E47) →
         Grupo 2 (E33, E34) → Grupo 3 (RFCE por API) → Grupo 4 (E32 &lt;250k: subir al portal manualmente).
+      </div>
+
+      {/* ── Descarga 4 XMLs E32 < 250k ── */}
+      <div style={{ background:"#fff", border:"1px solid #e5e7eb", borderRadius:6, padding:20, marginBottom:20 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <span style={{ fontSize:18 }}>📥</span>
+          <div>
+            <div style={{ fontFamily:sans, fontSize:14, fontWeight:700, color:"#111" }}>
+              Facturas de Consumo &lt; 250k — Descargar XMLs
+            </div>
+            <div style={{ fontFamily:sans, fontSize:12, color:"#6b7280", marginTop:2 }}>
+              Estos 4 XMLs se suben manualmente al portal certecf DESPUÉS de que los RFCE sean aprobados.
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:10 }}>
+          {[
+            { eNCF:"E320000000011", item:"Cargador",             mT:"40,120.00" },
+            { eNCF:"E320000000013", item:"Nevera",               mT:"112,100.00" },
+            { eNCF:"E320000000014", item:"Artículos de belleza", mT:"11,918.00" },
+            { eNCF:"E320000000015", item:"Celular",              mT:"64,900.00" },
+          ].map(({ eNCF, item, mT }) => (
+            <div key={eNCF} style={{ border:"1px solid #e5e7eb", borderRadius:4, padding:"12px 14px",
+              display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+              <div>
+                <div style={{ fontFamily:mono, fontSize:11, fontWeight:700, color:"#7c3aed" }}>{eNCF}</div>
+                <div style={{ fontFamily:sans, fontSize:12, color:"#374151", marginTop:2 }}>{item}</div>
+                <div style={{ fontFamily:mono, fontSize:11, color:"#6b7280" }}>RD$ {mT}</div>
+              </div>
+              <button onClick={() => descargarXML(eNCF)} disabled={descargando4 === eNCF}
+                style={{ padding:"6px 14px", borderRadius:4, border:"none", cursor:"pointer",
+                  background:"#7c3aed", color:"#fff", fontSize:11, fontFamily:sans, fontWeight:600,
+                  whiteSpace:"nowrap" }}>
+                {descargando4 === eNCF ? "..." : "⬇ XML"}
+              </button>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Test de conexión ── */}
