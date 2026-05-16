@@ -59,20 +59,39 @@ export default function CertificacionPage() {
     }
   };
 
-  // ── Enviar todas en el orden correcto (RFCE primero) ──────────────
+  // ── Enviar todas en el ORDEN EXACTO que exige DGII ─────────────────
+  // 1ro: E31, E32≥250k, E41, E43, E44, E45, E46, E47  (facturas base)
+  // 2do: E33, E34                   (notas — referencian facturas del grupo 1)
+  // 3ro: RFCE por API fc.dgii.gov.do (resúmenes E32 < 250k)
+  // 4to: E32 < 250k completas → MANUAL por el portal de DGII
   const enviarTodas = async () => {
     setEnviandoTodo(true);
-    // 1. Primero los 4 RFCE (E32 < 250k)
-    const rfces    = dePrueba.filter((f) => ENCFS_RFCE.has(f.eCF) && !f.estadoDGII || f.estadoDGII === "pendiente");
-    // 2. Luego todos los demás pendientes
-    const normales = dePrueba.filter((f) => !ENCFS_RFCE.has(f.eCF) && (!f.estadoDGII || f.estadoDGII === "pendiente"));
+    const pendiente = (f: typeof dePrueba[0]) =>
+      !f.estadoDGII || f.estadoDGII === "pendiente";
 
-    for (const f of [...rfces, ...normales]) {
+    // Grupo 1: facturas base (sin las notas ni los RFCE)
+    const grupo1 = dePrueba.filter((f) =>
+      ["E31","E32","E41","E43","E44","E45","E46","E47"].includes(f.tipoECF) &&
+      !ENCFS_RFCE.has(f.eCF) && pendiente(f)
+    );
+    // Grupo 2: notas de débito/crédito (dependen del grupo 1)
+    const grupo2 = dePrueba.filter((f) =>
+      ["E33","E34"].includes(f.tipoECF) && pendiente(f)
+    );
+    // Grupo 3: RFCE — resumen de E32 < 250k (va antes del upload manual)
+    const grupo3 = dePrueba.filter((f) =>
+      ENCFS_RFCE.has(f.eCF) && pendiente(f)
+    );
+
+    for (const f of [...grupo1, ...grupo2, ...grupo3]) {
       await enviarUna(f.id, f.eCF);
-      await new Promise((r) => setTimeout(r, 800)); // pausa entre envíos
+      await new Promise((r) => setTimeout(r, 1000));
     }
     setEnviandoTodo(false);
-    push({ tipo: "success", mensaje: "Envío completo. Revisa los estados en la página de Facturas." });
+    push({
+      tipo: "success",
+      mensaje: "Grupos 1-3 enviados. Ahora sube las 4 E32 < 250k integrales al portal de DGII manualmente.",
+    });
   };
 
   const aceptados  = dePrueba.filter((f) => f.estadoDGII === "Aceptado").length;
@@ -97,7 +116,7 @@ export default function CertificacionPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
         {[
           { n:1, titulo:"Sembrar en Firestore", desc:"Crea las 25 facturas con los eCF exactos del set DGII. Se crea también el cliente de prueba (RNC 131880681).", btn:"Crear facturas de prueba", action: sembrar, loading: sembrando, done: dePrueba.length > 0 },
-          { n:2, titulo:"Enviar a DGII", desc:"Manda primero los 4 RFCE (E32 < 250k), luego los 21 eCF restantes. Mismo endpoint /api/dgii/emitir que producción.", btn:"Enviar todas en orden", action: enviarTodas, loading: enviandoTodo, done: pendientes === 0 && dePrueba.length > 0 },
+          { n:2, titulo:"Enviar a DGII", desc:"Grupo 1 (E31/E32≥250k/E41/E43/E44/E45/E46/E47) → Grupo 2 (E33/E34) → Grupo 3 (RFCE). Orden exacto DGII. Mismo /api/dgii/emitir de producción.", btn:"Enviar todas en orden", action: enviarTodas, loading: enviandoTodo, done: pendientes === 0 && dePrueba.length > 0 },
           { n:3, titulo:"Verificar en Facturas", desc:"Ve a la página de Facturas. Las 25 aparecen ahí con su trackId, estado DGII y QR. Usa 'Consultar estado' para actualizar.", btn:null, action: null, loading: false, done: aceptados === 25 },
         ].map(({ n, titulo, desc, btn, action, loading: ldg, done }) => (
           <div key={n} style={{ background: "#fff", border: `1px solid ${done ? "#bbf7d0" : "#e5e7eb"}`, borderTop: `3px solid ${done ? "#166534" : "#0e7490"}`, borderRadius: 6, padding: 20 }}>
@@ -197,7 +216,7 @@ export default function CertificacionPage() {
                       <span style={{ fontSize:10, padding:"2px 8px", borderRadius:3, fontWeight:700, fontFamily:mono, background:`${c}15`, color:c, border:`1px solid ${c}30` }}>
                         {f.tipoECF}
                       </span>
-                      {esRFCE && <div style={{ fontSize:9, color:"#7c3aed", fontFamily:sans, marginTop:2 }}>RFCE primero</div>}
+                      {esRFCE && <div style={{ fontSize:9, color:"#7c3aed", fontFamily:sans, marginTop:2 }}>3ro: RFCE → 4to: portal</div>}
                     </td>
 
                     <td style={{ padding:"10px 14px" }}>
