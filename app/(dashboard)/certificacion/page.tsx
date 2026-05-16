@@ -26,6 +26,8 @@ export default function CertificacionPage() {
   const [subiendoFirma, setSubiendoFirma] = useState(false);
   const [testResult,   setTestResult]   = useState<string>("");
   const [descargando4,  setDescargando4]  = useState<string | null>(null);
+  const [subiendoExcel, setSubiendoExcel]  = useState(false);
+  const [setInfo,       setSetInfo]         = useState<{ totalFilas: number; nombreArchivo: string; columnas: string[] } | null>(null);
   const [testDetail,   setTestDetail]   = useState<string>("");
   const [testeando,    setTesteando]    = useState(false);
 
@@ -126,6 +128,21 @@ export default function CertificacionPage() {
 
   const aceptados  = dePrueba.filter((f) => f.estadoDGII === "Aceptado").length;
   const pendientes = dePrueba.filter(pendiente).length;
+
+  const subirExcelDGII = async (file: File) => {
+    setSubiendoExcel(true);
+    try {
+      const form = new FormData();
+      form.append("excel", file);
+      const res  = await fetch("/api/dgii/cert/upload-set", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) { push({ tipo: "error",   mensaje: data.error }); return; }
+      setSetInfo({ totalFilas: data.totalFilas, nombreArchivo: file.name, columnas: data.columnas });
+      push({ tipo: "success", mensaje: data.mensaje });
+    } catch (e: unknown) {
+      push({ tipo: "error", mensaje: String(e) });
+    } finally { setSubiendoExcel(false); }
+  };
 
   const descargarXML = async (eNCF: string) => {
     setDescargando4(eNCF);
@@ -285,6 +302,38 @@ export default function CertificacionPage() {
       <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:4, padding:"12px 16px", marginBottom:20, fontFamily:sans, fontSize:12, color:"#78350f" }}>
         <b>Orden que exige DGII:</b> Grupo 1 (E31, E32≥250k, E41, E43, E44, E45, E46, E47) →
         Grupo 2 (E33, E34) → Grupo 3 (RFCE por API) → Grupo 4 (E32 &lt;250k: subir al portal manualmente).
+      </div>
+
+      {/* ── Upload Set de Pruebas DGII ── */}
+      <div style={{ background:"#fff", border:"2px solid #7c3aed", borderRadius:6, padding:20, marginBottom:20 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+          <span style={{ fontSize:20 }}>📊</span>
+          <div>
+            <div style={{ fontFamily:sans, fontSize:14, fontWeight:700, color:"#7c3aed" }}>
+              Set de Pruebas DGII — Subir Excel oficial
+            </div>
+            <div style={{ fontFamily:sans, fontSize:12, color:"#6b7280", marginTop:2 }}>
+              Descarga el Excel del Paso 2 en el portal certecf y súbelo aquí. El sistema lo usa para generar los XMLs con los datos exactos que DGII espera.
+            </div>
+          </div>
+        </div>
+        {setInfo && (
+          <div style={{ background:"#f3f0ff", borderRadius:4, padding:"8px 12px", marginBottom:12,
+            fontFamily:sans, fontSize:12, color:"#5b21b6" }}>
+            ✅ {setInfo.nombreArchivo} — {setInfo.totalFilas} comprobantes cargados
+          </div>
+        )}
+        <label style={{ display:"inline-flex", alignItems:"center", gap:8, cursor:"pointer",
+          background: subiendoExcel ? "#e5e7eb" : "#7c3aed", color:"#fff",
+          padding:"8px 18px", borderRadius:4, fontSize:13, fontFamily:sans, fontWeight:600 }}>
+          {subiendoExcel ? "Procesando..." : "📂 Seleccionar Excel de DGII"}
+          <input type="file" accept=".xlsx,.xls" style={{ display:"none" }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) subirExcelDGII(f); }}
+            disabled={subiendoExcel} />
+        </label>
+        <div style={{ marginTop:10, fontFamily:sans, fontSize:11, color:"#9ca3af" }}>
+          Portal certecf → Paso 2 → "⬇ DESCARGAR COMPROBANTES" → sube el .xlsx aquí
+        </div>
       </div>
 
       {/* ── Descarga 4 XMLs E32 < 250k ── */}

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ECF>
+  <Encabezado>
+    <Version>1.0</Version>
+    <IdDoc>
+    <TipoeCF>41</TipoeCF>
+    <eNCF>E410000000010</eNCF>
+    <FechaVencimientoSecuencia>31-12-2028</FechaVencimientoSecuencia>
+  </IdDoc>
+    <Emisor>
+    <RNCEmisor>131217656</RNCEmisor>
+    <RazonSocialEmisor>Soraya y Leonardo Tours SRL</RazonSocialEmisor>
+    <DireccionEmisor>Playa Juan de Bolanos Bugalow #3, Montecristi</DireccionEmisor>
+    <TablaTelefonoEmisor><TelefonoEmisor>809-961-6343</TelefonoEmisor></TablaTelefonoEmisor>
+    <ActividadEconomica>Servicios de Turismo y Excursiones</ActividadEconomica>
+    <FechaEmision>01-04-2020</FechaEmision>
+  </Emisor>
+    <Comprador>
+    <RNCComprador>131880681</RNCComprador>
+    <RazonSocialComprador>DOCUMENTOS ELECTRONICOS DE PRUEBA DGII</RazonSocialComprador>
+    <DireccionComprador>Santo Domingo, República Dominicana</DireccionComprador>
+  </Comprador>
+    <Totales>
+    <MontoGravadoTotal>15045.30</MontoGravadoTotal>
+    <MontoGravadoI1>15045.30</MontoGravadoI1>
+    <MontoExento>0.00</MontoExento>
+    <TotalITBIS>2708.15</TotalITBIS>
+    <TotalITBIS1>2708.15</TotalITBIS1>
+    <MontoTotal>17753.45</MontoTotal>
+    <TotalITBISRetenido>2708.15</TotalITBISRetenido>
+  </Totales>
+  </Encabezado>
+  <DetallesItems>
+    <Item>
+      <NumeroLinea>1</NumeroLinea>
+      <IndicadorFacturacion>1</IndicadorFacturacion>
+      <Retencion>
+        <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
+        <MontoITBISRetenido>2708.15</MontoITBISRetenido>
+      </Retencion>
+      <NombreItem>Servicio Profesional Legislativo</NombreItem>
+      <IndicadorBienoServicio>2</IndicadorBienoServicio>
+      <CantidadItem>1.00</CantidadItem>
+      <UnidadMedida>43</UnidadMedida>
+      <PrecioUnitarioItem>15045.30</PrecioUnitarioItem>
+      <MontoItem>15045.30</MontoItem>
+      <ITBIS>2708.15</ITBIS>
+    </Item>
+  </DetallesItems>
+<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/><SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><Reference URI=""><Transforms><Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><DigestValue>WY1qC2i6Mq/MaiE6ftzxZaS1Y0R7btblKXk+G/j6vbk=</DigestValue></Reference></SignedInfo><SignatureValue>d7eXS3cSffxdEk4ZrY0DqNEyXg+jztNV/7gGM10MjQf1gFe2ZDqrH9VAi3eY1fw8k1Zo3czwS+cvaaK/g/5rfLy6Oo4ocfLAo8ovQdl+im9n6Z6yBhnO6fOh2O4LdAXxc6ACHIxuifR1dd3FiALQT730SJmXahxcYbZM/nXMT0SnXEiz0a13eGsy5WnIZZQCBN5fHQUI2mQ7642t9ZFOza/JQWnIKpf7bUgn3OK6YseD5KXdqdyE4cqDzDXWoKvVFqhz0k8PvcEixMOxwGT1OJDOIb+5Z5PQfuNC6JdsfJDQ30MziwH2ajlKmOZU69Yq5rJiGdEh5T3UR0IZXB7Vjg==</SignatureValue><KeyInfo><X509Data><X509Certificate>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</X509Certificate></X509Data></KeyInfo></Signature></ECF>
