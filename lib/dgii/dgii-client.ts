@@ -38,20 +38,43 @@ export async function validarSemilla(xmlFirmado: string): Promise<string> {
   return data.token;
 }
 
-// Obtener token — si falla retorna cadena vacía (auth es opcional per FAQ DGII #6)
+// Obtener token — primero busca en Firestore (guardado desde /certificacion)
+// Si no hay o está expirado, intenta firmar automáticamente
 export async function getToken(): Promise<string> {
-  const margen = 5 * 60 * 1000;
+  const margen = 5 * 60 * 1000; // 5 min de margen
+
+  // 1. Revisar cache en memoria
   if (tokenCache && tokenCache.expira.getTime() - Date.now() > margen) {
     return tokenCache.token;
   }
+
+  // 2. Buscar token guardado en Firestore (obtenido via App Firma Digital)
+  try {
+    const { adminDb } = await import("@/lib/firebase-admin");
+    const snap = await adminDb.collection("config").doc("dgii_token").get();
+    if (snap.exists) {
+      const data = snap.data() as { token: string; expira: string };
+      const expira = new Date(data.expira);
+      if (expira.getTime() - Date.now() > margen) {
+        console.log("[DGII] Token obtenido de Firestore, válido hasta:", data.expira);
+        tokenCache = { token: data.token, expira };
+        return data.token;
+      } else {
+        console.warn("[DGII] Token en Firestore expirado, renovar en /certificacion");
+      }
+    }
+  } catch (e) {
+    console.warn("[DGII] No se pudo leer token de Firestore:", e instanceof Error ? e.message : e);
+  }
+
+  // 3. Intentar firma automática (puede fallar por cert issue)
   try {
     const { firmarSemilla } = await import("./xml-signer");
     const semillaXml     = await obtenerSemilla();
     const semillaFirmada = await firmarSemilla(semillaXml);
     return await validarSemilla(semillaFirmada);
   } catch (e) {
-    // Auth falló — continuamos sin token (DGII FAQ #6: opcional)
-    console.warn("[DGII] Auth fallida, enviando sin token:", e instanceof Error ? e.message : e);
+    console.warn("[DGII] Auth automática fallida:", e instanceof Error ? e.message : e);
     return "";
   }
 }
