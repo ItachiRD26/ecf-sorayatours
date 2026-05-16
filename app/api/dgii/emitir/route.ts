@@ -37,7 +37,17 @@ export async function POST(req: NextRequest) {
     }
 
     const factura = { id: facturaId, ...facturaSnap.data() } as Factura;
-    const empresa = empresaSnap.data() as { nombre: string; rnc: string; direccion: string; telefono: string };
+
+    // Fallback con datos reales si config/empresa no existe en Firestore todavía
+    const EMPRESA_FALLBACK = {
+      nombre:    "SORAYA Y LEONARDO TOURS SRL",
+      rnc:       "1-31217656-6",
+      direccion: "Playa Juan de Bolanos Bugalow #3, Montecristi",
+      telefono:  "809-961-6343",
+    };
+    const empresa = (empresaSnap.exists && empresaSnap.data()?.rnc)
+      ? empresaSnap.data() as typeof EMPRESA_FALLBACK
+      : EMPRESA_FALLBACK;
 
     // Evitar re-envíos
     if (factura.estadoDGII && factura.estadoDGII !== "pendiente") {
