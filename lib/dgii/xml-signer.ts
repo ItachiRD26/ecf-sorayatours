@@ -178,12 +178,15 @@ export async function firmarXML(xmlOriginal: string): Promise<string> {
       `</KeyInfo>` +
     `</Signature>`;
 
-  // PASO 5: Insertar firma antes del tag de cierre raíz (igual que ejemplo DGII)
+  // PASO 5: Insertar firma en el XML CANONICALIZADO (no el original)
+  // Esto es clave: DGII verifica haciendo C14N del XML recibido (sin Signature).
+  // Si enviamos canon1 + Signature, entonces C14N(canon1) = canon1 (idempotente),
+  // y el digest coincide con el que calculamos en PASO 1.
   const closingTag = `</${rootName}>`;
-  const idx        = xmlOriginal.lastIndexOf(closingTag);
-  if (idx === -1) throw new Error(`Tag de cierre </${rootName}> no encontrado`);
+  const idx        = canon1.lastIndexOf(closingTag);
+  if (idx === -1) throw new Error(`Tag de cierre </${rootName}> no encontrado en XML canonicalizado`);
 
-  return xmlOriginal.substring(0, idx) + signatureBlock + xmlOriginal.substring(idx);
+  return canon1.substring(0, idx) + signatureBlock + canon1.substring(idx);
 }
 
 // Alias para firmar la semilla de autenticación

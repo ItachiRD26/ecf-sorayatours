@@ -214,9 +214,22 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
 
   let compradorXml = "";
   if (idExt && (tipo === "47" || (tipo === "46" && !rncComp))) {
+    // Extranjero — incluir todos los campos del comprador que tenga el Excel
     compradorXml = `<Comprador>
     <IdentificadorExtranjero>${idExt}</IdentificadorExtranjero>
     <RazonSocialComprador>${razonComp || "BENEFICIARIO EXTERIOR"}</RazonSocialComprador>
+    ${opt("ContactoComprador", contactoComp)}
+    ${opt("CorreoComprador", correoComp)}
+    ${opt("DireccionComprador", dirComp)}
+    ${opt("MunicipioComprador", muniComp)}
+    ${opt("ProvinciaComprador", provComp)}
+    ${optDate("FechaEntrega", fechaEntrega)}
+    ${opt("ContactoEntrega", contEntrega)}
+    ${opt("DireccionEntrega", dirEntrega)}
+    ${opt("TelefonoAdicional", telAdicional)}
+    ${optDate("FechaOrdenCompra", fechaOC)}
+    ${opt("NumeroOrdenCompra", numOC)}
+    ${opt("CodigoInternoComprador", codIntComp)}
   </Comprador>`;
   } else if (rncComp || razonComp) {
     compradorXml = `<Comprador>
