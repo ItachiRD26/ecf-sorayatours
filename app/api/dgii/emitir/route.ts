@@ -87,7 +87,7 @@ export async function POST(req: NextRequest) {
     if (esRFCE) {
       // E32 < RD$250,000 → enviar el resumen RFCE primero (por fc.dgii.gov.do)
       // La factura completa se sube manualmente al portal de DGII después de que el resumen sea aceptado
-      const rfceXml     = buildRFCEXml(factura, empresa); // ya retorna <RFCE>...</RFCE>
+      const rfceXml     = buildRFCEXml(factura, empresa, codigoSeguridad); // CodigoSeguridadeCF requerido por XSD
       const rfceFirmado = await firmarXML(rfceXml);
       const resultado   = await enviarRFCE(rfceFirmado, tokenManual);
 

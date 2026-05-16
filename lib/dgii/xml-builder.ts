@@ -480,7 +480,7 @@ function buildE47(f: Factura, e: EmpresaConfig): string {
 // ── RFCE — Resumen E32 < RD$250,000 ──────────────────────────────
 // Estructura según XSD RFCE_32_v_1_0:
 // IdDoc (sin FechaVencimientoSecuencia) → Emisor → Comprador → Totales
-function buildRFCE(f: Factura, e: EmpresaConfig): string {
+function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = ""): string {
   const t       = calcTotales(f.items);
   const exentos = f.items.filter(i => i.itbis === 0).reduce((s, i) => s + calcLinea(i).sub, 0);
   const grav    = t.sub - exentos;
@@ -506,6 +506,7 @@ function buildRFCE(f: Factura, e: EmpresaConfig): string {
       <TotalITBIS1>${fmt(t.itbis)}</TotalITBIS1>
       <MontoTotal>${fmt(t.total)}</MontoTotal>
     </Totales>
+    ${codigoSeguridad ? `<CodigoSeguridadeCF>${codigoSeguridad.substring(0, 6)}</CodigoSeguridadeCF>` : ""}
   </Encabezado>
 </RFCE>`;
 }
@@ -527,8 +528,8 @@ export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: Empr
   }
 }
 
-export function buildRFCEXml(f: Factura, empresa: EmpresaConfig): string {
-  return buildRFCE(f, empresa);
+export function buildRFCEXml(f: Factura, empresa: EmpresaConfig, codigoSeguridad?: string): string {
+  return buildRFCE(f, empresa, codigoSeguridad ?? "");
 }
 
 export const LIMITE_RFCE = 250_000;
