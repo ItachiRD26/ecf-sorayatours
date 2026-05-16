@@ -1,8 +1,9 @@
-// Parsea el Excel oficial de DGII (Set de Pruebas) y lo guarda en Firestore
-// Guarda los datos en chunks de 100 filas para evitar el límite de 1MB de Firestore
+// Sube el Excel de DGII a Firebase Storage y guarda metadata en Firestore
+// Firebase Storage maneja archivos grandes sin límite de 1MB
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb }        from "@/lib/firebase-admin";
-import * as XLSX                      from "xlsx";
+import { getStorage }                from "firebase-admin/storage";
+import * as XLSX                     from "xlsx";
 
 async function verificarSesion(req: NextRequest): Promise<boolean> {
   const cookie = req.cookies.get("__session")?.value;
@@ -19,8 +20,6 @@ function normalizeKey(key: string): string {
     .replace(/[^a-z0-9_]/g, "");
 }
 
-const CHUNK_SIZE = 50; // filas por documento Firestore
-
 export async function POST(req: NextRequest) {
   if (!await verificarSesion(req))
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
@@ -30,10 +29,20 @@ export async function POST(req: NextRequest) {
     const file     = formData.get("excel") as File | null;
     if (!file) return NextResponse.json({ error: "No se recibió archivo" }, { status: 400 });
 
-    // Leer el Excel con SheetJS
     const arrayBuffer = await file.arrayBuffer();
-    const workbook    = XLSX.read(arrayBuffer, { type: "array" });
+    const buffer      = Buffer.from(arrayBuffer);
 
+    // 1. Subir archivo original a Firebase Storage
+    const bucket    = getStorage().bucket();
+    const storagePath = "dgii/set_pruebas_dgii.xlsx";
+    const fileRef   = bucket.file(storagePath);
+
+    await fileRef.save(buffer, {
+      metadata: { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+    });
+
+    // 2. Parsear con SheetJS para obtener metadata y preview
+    const workbook  = XLSX.read(buffer, { type: "buffer" });
     const sheetName = workbook.SheetNames[0];
     const sheet     = workbook.Sheets[sheetName];
     const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
@@ -41,48 +50,31 @@ export async function POST(req: NextRequest) {
     if (rawRows.length === 0)
       return NextResponse.json({ error: "El Excel está vacío" }, { status: 400 });
 
-    // Normalizar keys
-    const rows = rawRows.map(row => {
-      const normalized: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
-        normalized[normalizeKey(k)] = v;
-      }
-      return normalized;
-    });
+    // Normalizar keys solo del preview
+    const normalizeRow = (row: Record<string, unknown>) => {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) out[normalizeKey(k)] = v;
+      return out;
+    };
 
-    const columnas    = Object.keys(rows[0] ?? {});
-    const totalFilas  = rows.length;
-    const totalChunks = Math.ceil(totalFilas / CHUNK_SIZE);
+    const columnas = Object.keys(rawRows[0]).map(normalizeKey);
+    const preview  = rawRows.slice(0, 3).map(normalizeRow);
 
-    // Borrar chunks anteriores
-    const colRef = adminDb.collection("set_pruebas_chunks");
-    const oldSnap = await colRef.get();
-    const deleteBatch = adminDb.batch();
-    oldSnap.docs.forEach(d => deleteBatch.delete(d.ref));
-    if (oldSnap.size > 0) await deleteBatch.commit();
-
-    // Guardar nuevos chunks
-    for (let i = 0; i < totalChunks; i++) {
-      const chunk = rows.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
-      await colRef.doc(`chunk_${i}`).set({ chunk, index: i });
-    }
-
-    // Metadata en config
+    // 3. Guardar metadata en Firestore (pequeño, sin las filas)
     await adminDb.collection("config").doc("set_pruebas_dgii").set({
+      storagePath,
       columnas,
-      totalFilas,
-      totalChunks,
+      totalFilas:    rawRows.length,
       nombreArchivo: file.name,
       subidoEn:      new Date().toISOString(),
     });
 
     return NextResponse.json({
-      success:     true,
-      totalFilas,
-      totalChunks,
+      success:    true,
+      totalFilas: rawRows.length,
       columnas,
-      preview:     rows.slice(0, 2),
-      mensaje:     `✅ ${totalFilas} comprobantes cargados en ${totalChunks} partes`,
+      preview,
+      mensaje:    `✅ ${rawRows.length} comprobantes cargados desde "${file.name}"`,
     });
 
   } catch (e: unknown) {
@@ -93,36 +85,34 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET — retorna metadata + primeras filas
+// GET metadata
 export async function GET(req: NextRequest) {
   if (!await verificarSesion(req))
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const snap = await adminDb.collection("config").doc("set_pruebas_dgii").get();
   if (!snap.exists) return NextResponse.json({ error: "No hay set cargado" }, { status: 404 });
-
-  const meta = snap.data()!;
-
-  // Retornar primeras filas del chunk 0
-  const chunk0 = await adminDb.collection("set_pruebas_chunks").doc("chunk_0").get();
-  const preview = chunk0.exists ? (chunk0.data()!.chunk as unknown[]).slice(0, 3) : [];
-
-  return NextResponse.json({ ...meta, preview });
+  return NextResponse.json(snap.data());
 }
 
-// GET todas las filas — para el seed route
-export async function getAllRows(): Promise<Record<string, unknown>[]> {
-  const meta = await adminDb.collection("config").doc("set_pruebas_dgii").get();
-  if (!meta.exists) return [];
+// Helper para leer todas las filas desde Storage (usado por el seed route)
+export async function getAllRowsFromStorage(): Promise<Record<string, unknown>[]> {
+  const snap = await adminDb.collection("config").doc("set_pruebas_dgii").get();
+  if (!snap.exists) return [];
 
-  const { totalChunks } = meta.data() as { totalChunks: number };
-  const allRows: Record<string, unknown>[] = [];
+  const { storagePath } = snap.data() as { storagePath: string };
+  const bucket  = getStorage().bucket();
+  const [buffer] = await bucket.file(storagePath).download();
 
-  for (let i = 0; i < totalChunks; i++) {
-    const snap = await adminDb.collection("set_pruebas_chunks").doc(`chunk_${i}`).get();
-    if (snap.exists) {
-      allRows.push(...(snap.data()!.chunk as Record<string, unknown>[]));
+  const workbook  = XLSX.read(buffer, { type: "buffer" });
+  const sheet     = workbook.Sheets[workbook.SheetNames[0]];
+  const rawRows   = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
+
+  return rawRows.map(row => {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      out[k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "")] = v;
     }
-  }
-  return allRows;
+    return out;
+  });
 }
