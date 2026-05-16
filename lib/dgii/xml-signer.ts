@@ -1,117 +1,73 @@
-import * as forge from "node-forge";
+// Firma XMLDSig con C14N real según el estándar W3C
+// Usa xml-crypto que implementa correctamente la canonicalización requerida por DGII
+// El error "Firma del certificado invalida" ocurría porque node-forge sola no hace C14N correcto
 
-function loadP12() {
+import { SignedXml }  from "xml-crypto";
+import * as forge     from "node-forge";
+
+// ─── Cargar P12 y devolver PEMs ───────────────────────────────────────────────
+function loadP12(): { privateKeyPem: string; certPem: string; certBase64: string } {
   const b64  = process.env.DGII_CERT_BASE64;
   const pass = process.env.DGII_CERT_PASSWORD ?? "";
-  if (!b64) throw new Error("DGII_CERT_BASE64 no configurado");
+  if (!b64) throw new Error("DGII_CERT_BASE64 no configurado en .env");
 
-  const der   = forge.util.decode64(b64);
-  const asn1  = forge.asn1.fromDer(der);
-  const p12   = forge.pkcs12.pkcs12FromAsn1(asn1, false, pass);
+  const der  = forge.util.decode64(b64);
+  const asn1 = forge.asn1.fromDer(der);
+  const p12  = forge.pkcs12.pkcs12FromAsn1(asn1, false, pass);
 
-  const keyBags  = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
-  const keyBag   = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
-  if (!keyBag?.key) throw new Error("No se pudo extraer la clave privada");
+  // Clave privada
+  const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
+  const keyBag  = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag]?.[0];
+  if (!keyBag?.key) throw new Error("No se pudo extraer la clave privada del certificado");
 
+  // Certificado
   const certBags = p12.getBags({ bagType: forge.pki.oids.certBag });
   const certBag  = certBags[forge.pki.oids.certBag]?.[0];
-  if (!certBag?.cert) throw new Error("No se pudo extraer el certificado");
+  if (!certBag?.cert) throw new Error("No se pudo extraer el certificado del .p12");
 
-  return {
-    privateKey: keyBag.key as forge.pki.rsa.PrivateKey,
-    cert:       certBag.cert,
-  };
-}
-
-// C14N simple — elimina saltos de línea extra, normaliza atributos
-function c14n(xml: string): string {
-  return xml
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .trim();
-}
-
-function getCertPem(cert: forge.pki.Certificate): string {
-  return forge.pki.certificateToPem(cert)
+  const privateKeyPem = forge.pki.privateKeyToPem(keyBag.key as forge.pki.rsa.PrivateKey);
+  const certPem       = forge.pki.certificateToPem(certBag.cert);
+  const certBase64    = certPem
     .replace("-----BEGIN CERTIFICATE-----", "")
     .replace("-----END CERTIFICATE-----", "")
-    .replace(/\n/g, "")
-    .trim();
+    .replace(/\s/g, "");
+
+  return { privateKeyPem, certPem, certBase64 };
 }
 
-function buildSignatureBlock(
-  digestValue:    string,
-  signatureValue: string,
-  certPem:        string,
-): string {
-  return (
-    `<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">` +
-    `<SignedInfo>` +
-    `<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>` +
-    `<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>` +
-    `<Reference URI="">` +
-    `<Transforms>` +
-    `<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>` +
-    `</Transforms>` +
-    `<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>` +
-    `<DigestValue>${digestValue}</DigestValue>` +
-    `</Reference>` +
-    `</SignedInfo>` +
-    `<SignatureValue>${signatureValue}</SignatureValue>` +
-    `<KeyInfo>` +
-    `<X509Data>` +
-    `<X509Certificate>${certPem}</X509Certificate>` +
-    `</X509Data>` +
-    `</KeyInfo>` +
-    `</Signature>`
-  );
-}
-
+// ─── Firma principal ──────────────────────────────────────────────────────────
+// xml-crypto aplica C14N (http://www.w3.org/TR/2001/REC-xml-c14n-20010315)
+// antes de calcular el DigestValue y de firmar el SignedInfo,
+// que es exactamente lo que DGII valida al recibir el comprobante.
 export async function firmarXML(xml: string): Promise<string> {
-  const { privateKey, cert } = loadP12();
-  const certPem = getCertPem(cert);
+  const { privateKeyPem, certBase64 } = loadP12();
 
-  // 1. Canonicalizar el XML original
-  const xmlC14n = c14n(xml);
+  const sig = new SignedXml({
+    privateKey:              privateKeyPem,
+    signatureAlgorithm:      "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+    canonicalizationAlgorithm: "http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+  });
 
-  // 2. DigestValue = SHA256(XML canonicalizado)
-  const mdDigest = forge.md.sha256.create();
-  mdDigest.update(xmlC14n, "utf8");
-  const digestValue = forge.util.encode64(mdDigest.digest().bytes());
+  // Referencia al documento completo (URI="") con transform enveloped
+  sig.addReference({
+    uri:             "",
+    transforms:      ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"],
+    digestAlgorithm: "http://www.w3.org/2001/04/xmlenc#sha256",
+  });
 
-  // 3. Construir el bloque SignedInfo con el DigestValue
-  const signedInfoXml =
-    `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">` +
-    `<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>` +
-    `<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>` +
-    `<Reference URI="">` +
-    `<Transforms>` +
-    `<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>` +
-    `</Transforms>` +
-    `<DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>` +
-    `<DigestValue>${digestValue}</DigestValue>` +
-    `</Reference>` +
-    `</SignedInfo>`;
+  // KeyInfo con el certificado X509
+  sig.getKeyInfoContent = () =>
+    `<X509Data><X509Certificate>${certBase64}</X509Certificate></X509Data>`;
 
-  // 4. SignatureValue = RSA-SHA256(C14N(SignedInfo))
-  const signedInfoC14n = c14n(signedInfoXml);
-  const mdSig = forge.md.sha256.create();
-  mdSig.update(signedInfoC14n, "utf8");
-  const signatureBytes  = privateKey.sign(mdSig);
-  const signatureValue  = forge.util.encode64(signatureBytes);
+  // Calcular firma e insertar al final del elemento raíz
+  sig.computeSignature(xml, {
+    location: { reference: "/*", action: "append" },
+  });
 
-  // 5. Construir bloque Signature completo
-  const signatureBlock = buildSignatureBlock(digestValue, signatureValue, certPem);
-
-  // 6. Insertar la firma antes del cierre del elemento raíz
-  const lastClose = xml.lastIndexOf("</");
-  const closeTag  = xml.substring(lastClose);
-  const body      = xml.substring(0, lastClose);
-
-  return body + signatureBlock + closeTag;
+  return sig.getSignedXml();
 }
 
-// Alias — la semilla usa el mismo proceso
+// Alias — la semilla usa el mismo proceso de firma
 export async function firmarSemilla(semillaXml: string): Promise<string> {
   return firmarXML(semillaXml);
 }
