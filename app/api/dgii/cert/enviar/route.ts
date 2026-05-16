@@ -108,16 +108,17 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const tipoPago  = s(row,"tipopago","tipo_pago") || "1";
   const tipoIngr  = s(row,"tipoingresos","tipo_ingresos") || "01";
 
+  // Orden XSD: RNC→Razon→NomCom→Dir→Municipio→Provincia→Telefono→Correo→Actividad→FechaEmision
   const emisorXml = `<Emisor>
     <RNCEmisor>${rncEm || "131217656"}</RNCEmisor>
     <RazonSocialEmisor>${razonEm}</RazonSocialEmisor>
-    ${nomCom  ? `<NombreComercial>${nomCom}</NombreComercial>` : ""}
-    ${dirEm   ? `<DireccionEmisor>${dirEm}</DireccionEmisor>` : ""}
-    ${telEm1  ? `<TablaTelefonoEmisor><TelefonoEmisor>${telEm1}</TelefonoEmisor></TablaTelefonoEmisor>` : ""}
-    <ActividadEconomica>${actEcon}</ActividadEconomica>
+    ${nomCom   ? `<NombreComercial>${nomCom}</NombreComercial>` : ""}
+    ${dirEm    ? `<DireccionEmisor>${dirEm}</DireccionEmisor>` : ""}
+    ${muni     ? `<Municipio>${muni}</Municipio>` : ""}
+    ${prov     ? `<Provincia>${prov}</Provincia>` : ""}
+    ${telEm1   ? `<TablaTelefonoEmisor><TelefonoEmisor>${telEm1}</TelefonoEmisor></TablaTelefonoEmisor>` : ""}
     ${correoEm ? `<CorreoEmisor>${correoEm}</CorreoEmisor>` : ""}
-    ${muni    ? `<Municipio>${muni}</Municipio>` : ""}
-    ${prov    ? `<Provincia>${prov}</Provincia>` : ""}
+    ${actEcon  ? `<ActividadEconomica>${actEcon}</ActividadEconomica>` : ""}
     <FechaEmision>${fechaEm}</FechaEmision>
   </Emisor>`;
 
@@ -206,7 +207,6 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     <MontoTotal>${fmt(montoTot)}</MontoTotal>
     ${itbisRet  !== undefined ? `<TotalITBISRetenido>${fmt(itbisRet)}</TotalITBISRetenido>` : ""}
     ${isrRet    !== undefined ? `<TotalISRRetencion>${fmt(isrRet)}</TotalISRRetencion>` : ""}
-    ${indMonto  ? `<IndicadorMontoGravado>${indMonto}</IndicadorMontoGravado>` : ""}
   </Totales>`;
   }
 
@@ -280,10 +280,12 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   // ── IdDoc ──────────────────────────────────────────────────────────────────
   const tiposConIngresos = ["31","32","33","44","45","46"];
   const tiposConPago     = ["31","32","33","34","41","44","45","46","47"];
+  // IndicadorMontoGravado va en IdDoc (XSD: después de FechaVencimientoSecuencia)
   const idDocXml = `<IdDoc>
     <TipoeCF>${tipo}</TipoeCF>
     <eNCF>${encf}</eNCF>
     <FechaVencimientoSecuencia>${vencim}</FechaVencimientoSecuencia>
+    ${indMonto ? `<IndicadorMontoGravado>${indMonto}</IndicadorMontoGravado>` : ""}
     ${tiposConIngresos.includes(tipo) ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
     ${tiposConPago.includes(tipo)     ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
   </IdDoc>`;
@@ -329,11 +331,12 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
   const tipoPago = s(row,"tipopago","tipo_pago") || "1";
   const tipoIngr = s(row,"tipoingresos","tipo_ingresos") || "01";
   const gravI1   = campoNum(row,"montogravadoi1","monto_gravado_i1");
+  const gravI2   = campoNum(row,"montogravadoi2","monto_gravado_i2");
   const gravTot  = campoNum(row,"montogravadototal","monto_gravado_total");
   const exento   = campoNum(row,"montoexento","monto_exento");
-  const itbis1   = campoNum(row,"itbis1");
   const totItbis = campoNum(row,"totalitbis","total_itbis");
   const totItb1  = campoNum(row,"totalitbis1","total_itbis1");
+  const totItb2  = campoNum(row,"totalitbis2","total_itbis2");
   const montoTot = n(row,"montototal","monto_total");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -358,10 +361,11 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
     <Totales>
       ${gravTot  !== undefined ? `<MontoGravadoTotal>${fmt(gravTot)}</MontoGravadoTotal>` : ""}
       ${gravI1   !== undefined ? `<MontoGravadoI1>${fmt(gravI1)}</MontoGravadoI1>` : ""}
+      ${gravI2   !== undefined ? `<MontoGravadoI2>${fmt(gravI2)}</MontoGravadoI2>` : ""}
       ${exento   !== undefined ? `<MontoExento>${fmt(exento)}</MontoExento>` : ""}
-      ${itbis1   !== undefined ? `<ITBIS1>${fmt(itbis1)}</ITBIS1>` : ""}
       ${totItbis !== undefined ? `<TotalITBIS>${fmt(totItbis)}</TotalITBIS>` : ""}
       ${totItb1  !== undefined ? `<TotalITBIS1>${fmt(totItb1)}</TotalITBIS1>` : ""}
+      ${totItb2  !== undefined ? `<TotalITBIS2>${fmt(totItb2)}</TotalITBIS2>` : ""}
       <MontoTotal>${fmt(montoTot)}</MontoTotal>
     </Totales>
   </Encabezado>
