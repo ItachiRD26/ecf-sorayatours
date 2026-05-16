@@ -7,13 +7,29 @@ import * as forge  from "node-forge";
 import { DOMParser } from "xmldom";
 
 // ─── Carga del certificado P12 ────────────────────────────────────────────────
+// Soporta dos modos:
+// 1. DGII_CERT_PATH = ruta al archivo .p12 en el VPS (preferido, más confiable)
+// 2. DGII_CERT_BASE64 = certificado en base64 (fallback)
 function loadP12(): { privateKey: forge.pki.rsa.PrivateKey; certBase64: string } {
-  const b64  = process.env.DGII_CERT_BASE64;
-  const pass = process.env.DGII_CERT_PASSWORD ?? "";
-  if (!b64) throw new Error("DGII_CERT_BASE64 no configurado");
+  const pass     = process.env.DGII_CERT_PASSWORD ?? "";
+  const certPath = process.env.DGII_CERT_PATH;
+  const b64      = process.env.DGII_CERT_BASE64;
 
-  const der  = forge.util.decode64(b64);
-  const asn1 = forge.asn1.fromDer(der);
+  let derBytes: string;
+
+  if (certPath) {
+    // Leer el .p12 directamente del sistema de archivos
+    const fs  = require("fs");
+    const buf = fs.readFileSync(certPath) as Buffer;
+    // Convertir Buffer a binary string para forge
+    derBytes = buf.toString("binary");
+  } else if (b64) {
+    derBytes = forge.util.decode64(b64);
+  } else {
+    throw new Error("Configurar DGII_CERT_PATH o DGII_CERT_BASE64");
+  }
+
+  const asn1 = forge.asn1.fromDer(derBytes);
   const p12  = forge.pkcs12.pkcs12FromAsn1(asn1, false, pass);
 
   const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag });
