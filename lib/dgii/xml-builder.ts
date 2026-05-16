@@ -29,7 +29,7 @@ interface EmpresaConfig {
 }
 
 // ── Emisor ────────────────────────────────────────────────────────
-function buildEmisor(e: EmpresaConfig): string {
+function buildEmisor(e: EmpresaConfig, fecha: string): string {
   const rnc = e.rnc.replace(/\D/g, "");
   return `<Emisor>
     <RNCEmisor>${rnc}</RNCEmisor>
@@ -37,6 +37,7 @@ function buildEmisor(e: EmpresaConfig): string {
     <DireccionEmisor>${escapeXml(e.direccion)}</DireccionEmisor>
     ${e.telefono ? `<TablaTelefonoEmisor><TelefonoEmisor>${e.telefono}</TelefonoEmisor></TablaTelefonoEmisor>` : ""}
     <ActividadEconomica>Servicios de Turismo y Excursiones</ActividadEconomica>
+    <FechaEmision>${fecha}</FechaEmision>
   </Emisor>`;
 }
 
@@ -154,38 +155,38 @@ function infoRef(f: Factura, codMod: string): string {
 // ─────────────────────────────────────────────────────────────────
 
 function buildE31(f: Factura, c: Cliente, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "31")}\n    ${buildEmisor(e)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "31")}\n    ${buildEmisor(e, f.fecha)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE32(f: Factura, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "32")}\n    ${buildEmisor(e)}\n    ${compradorConsumidor(f)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "32")}\n    ${buildEmisor(e, f.fecha)}\n    ${compradorConsumidor(f)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
 }
 
 function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
 }
 
 function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "41")}\n    ${buildEmisor(e)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "41")}\n    ${buildEmisor(e, f.fecha)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE43(f: Factura, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "44")}\n    ${buildEmisor(e)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "44")}\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE45(f: Factura, c: Cliente, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "45")}\n    ${buildEmisor(e)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "45")}\n    ${buildEmisor(e, f.fecha)}\n    ${compradorB2B(c)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
@@ -197,11 +198,11 @@ function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string 
   } else {
     comp = compradorConsumidor(f);
   }
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "46")}\n    ${buildEmisor(e)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "46")}\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE47(f: Factura, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "47")}\n    ${buildEmisor(e)}\n    ${compradorExtranjero(f)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItemsE47(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    ${idDoc(f, "47")}\n    ${buildEmisor(e, f.fecha)}\n    ${compradorExtranjero(f)}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItemsE47(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 // ── RFCE — Resumen E32 < RD$250,000 ──────────────────────────────
