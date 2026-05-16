@@ -152,12 +152,14 @@ function totalesE43(f: Factura): string {
 
 // ── IdDoc base ────────────────────────────────────────────────────
 function idDoc(f: Factura, tipo: string): string {
+  // FechaEmision va en <Emisor>, NO en <IdDoc> (según XSD e-CF)
+  // TipoIngresos es obligatorio: 01=Operaciones, 02=Financieros, 06=Otros
   return `<IdDoc>
       <TipoeCF>${tipo}</TipoeCF>
       <eNCF>${f.eCF}</eNCF>
       <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+      <TipoIngresos>01</TipoIngresos>
       <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
-      <FechaEmision>${fmtFecha(f.fecha)}</FechaEmision>
     </IdDoc>`;
 }
 
@@ -185,12 +187,12 @@ function buildE32(f: Factura, e: EmpresaConfig): string {
 
 function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoIngresos>01</TipoIngresos><TipoPago>1</TipoPago></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
 }
 
 function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoPago>1</TipoPago></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
 }
 
 function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
@@ -198,7 +200,7 @@ function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
 }
 
 function buildE43(f: Factura, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
@@ -237,7 +239,8 @@ function buildRFCE(f: Factura, e: EmpresaConfig): string {
       <TipoeCF>32</TipoeCF>
       <eNCF>${f.eCF}</eNCF>
       <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
-      <FechaEmision>${fmtFecha(f.fecha)}</FechaEmision>
+      <TipoIngresos>01</TipoIngresos>
+      <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
     </IdDoc>
     <Emisor>
       <RNCEmisor>${fmtRNC(e.rnc)}</RNCEmisor>
