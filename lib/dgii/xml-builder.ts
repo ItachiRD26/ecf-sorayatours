@@ -13,6 +13,17 @@ function getTipoPago(terminos: string): string {
 const TIPO_BIEN_SERVICIO  = "2";
 const INDICADOR_FACTURACION = "1";
 
+// Convierte fecha ISO (YYYY-MM-DD) al formato DGII (DD-MM-YYYY)
+function fmtFecha(fecha: string): string {
+  if (!fecha) return "";
+  // Si ya está en formato DD-MM-YYYY, dejarlo igual
+  if (/^\d{2}-\d{2}-\d{4}$/.test(fecha)) return fecha;
+  // Convertir de YYYY-MM-DD a DD-MM-YYYY
+  const [y, m, d] = fecha.split("-");
+  if (y && m && d) return `${d.padStart(2,"0")}-${m.padStart(2,"0")}-${y}`;
+  return fecha;
+}
+
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, "&amp;")
@@ -37,7 +48,7 @@ function buildEmisor(e: EmpresaConfig, fecha: string): string {
     <DireccionEmisor>${escapeXml(e.direccion)}</DireccionEmisor>
     ${e.telefono ? `<TablaTelefonoEmisor><TelefonoEmisor>${e.telefono}</TelefonoEmisor></TablaTelefonoEmisor>` : ""}
     <ActividadEconomica>Servicios de Turismo y Excursiones</ActividadEconomica>
-    <FechaEmision>${fecha}</FechaEmision>
+    <FechaEmision>${fmtFecha(fecha)}</FechaEmision>
   </Emisor>`;
 }
 
@@ -134,9 +145,9 @@ function idDoc(f: Factura, tipo: string): string {
   return `<IdDoc>
       <TipoeCF>${tipo}</TipoeCF>
       <eNCF>${f.eCF}</eNCF>
-      <FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia>
+      <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
       <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
-      <FechaEmision>${f.fecha}</FechaEmision>
+      <FechaEmision>${fmtFecha(f.fecha)}</FechaEmision>
     </IdDoc>`;
 }
 
@@ -144,7 +155,7 @@ function idDoc(f: Factura, tipo: string): string {
 function infoRef(f: Factura, codMod: string): string {
   return `<InformacionReferencia>
     <NCFModificado>${f.eCFRef ?? ""}</NCFModificado>
-    <FechaNCFModificado>${f.fecha}</FechaNCFModificado>
+    <FechaNCFModificado>${fmtFecha(f.fecha)}</FechaNCFModificado>
     <CodigoModificacion>${codMod}</CodigoModificacion>
     ${f.motivoNota ? `<RazonModificacion>${escapeXml(f.motivoNota)}</RazonModificacion>` : ""}
   </InformacionReferencia>`;
@@ -164,12 +175,12 @@ function buildE32(f: Factura, e: EmpresaConfig): string {
 
 function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>33</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "3")}\n</ECF>`;
 }
 
 function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>34</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><TipoPago>1</TipoPago><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${comp}\n    ${totalesB2B(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n  ${infoRef(f, "2")}\n</ECF>`;
 }
 
 function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
@@ -177,7 +188,7 @@ function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
 }
 
 function buildE43(f: Factura, e: EmpresaConfig): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia><FechaEmision>${f.fecha}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<ECF>\n  <Encabezado>\n    <Version>${VERSION}</Version>\n    <IdDoc><TipoeCF>43</TipoeCF><eNCF>${f.eCF}</eNCF><FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia><FechaEmision>${fmtFecha(f.fecha)}</FechaEmision></IdDoc>\n    ${buildEmisor(e, f.fecha)}\n    ${totalesE43(f)}\n  </Encabezado>\n  <DetallesItems>\n    ${buildItems(f.items)}\n  </DetallesItems>\n</ECF>`;
 }
 
 function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
@@ -215,8 +226,8 @@ function buildRFCE(f: Factura, e: EmpresaConfig): string {
     <IdDoc>
       <TipoeCF>32</TipoeCF>
       <eNCF>${f.eCF}</eNCF>
-      <FechaVencimientoSecuencia>${f.vencimientoECF}</FechaVencimientoSecuencia>
-      <FechaEmision>${f.fecha}</FechaEmision>
+      <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+      <FechaEmision>${fmtFecha(f.fecha)}</FechaEmision>
     </IdDoc>
     <Emisor>
       <RNCEmisor>${e.rnc.replace(/\D/g, "")}</RNCEmisor>

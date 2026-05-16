@@ -32,10 +32,10 @@ function buildE32XML(c: typeof CASOS_E32_PEQUENAS[0]): string {
     <IdDoc>
       <TipoeCF>32</TipoeCF>
       <eNCF>${c.eNCF}</eNCF>
-      <FechaVencimientoSecuencia>2099-12-31</FechaVencimientoSecuencia>
+      <FechaVencimientoSecuencia>31-12-2099</FechaVencimientoSecuencia>
       <IndicadorMontoGravado>0</IndicadorMontoGravado>
       <TipoPago>1</TipoPago>
-      <FechaEmision>2020-04-01</FechaEmision>
+      <FechaEmision>01-04-2020</FechaEmision>
     </IdDoc>
     <Emisor>
       <RNCEmisor>${RNC_EMISOR}</RNCEmisor>
@@ -43,7 +43,7 @@ function buildE32XML(c: typeof CASOS_E32_PEQUENAS[0]): string {
       <DireccionEmisor>${DIR_EMISOR}</DireccionEmisor>
       <TablaTelefonoEmisor><TelefonoEmisor>${TEL_EMISOR}</TelefonoEmisor></TablaTelefonoEmisor>
       <ActividadEconomica>Servicios de Turismo y Excursiones</ActividadEconomica>
-      <FechaEmision>2020-04-01</FechaEmision>
+      <FechaEmision>01-04-2020</FechaEmision>
     </Emisor>
     <Comprador>
       <RazonSocialComprador>CONSUMIDOR FINAL</RazonSocialComprador>
