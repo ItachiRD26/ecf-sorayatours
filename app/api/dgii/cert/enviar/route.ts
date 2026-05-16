@@ -102,9 +102,11 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const prov      = s(row,"provincia");
   const correoEm  = esc(s(row,"correoemisor","correo_emisor"));
   const telEm1    = s(row,"telefonoemisor1","telefono_emisor1","telefonoemisor");
-  const actEcon   = esc(s(row,"actividadeconomica","actividad_economica") || "Servicios de Turismo y Excursiones");
+  const actEcon   = esc(s(row,"actividadeconomica","actividad_economica"));
+  // En certecf, algunos casos tienen ActividadEconomica vacía según el Excel
   const fechaEm   = fmtFecha(s(row,"fechaemision","fecha_emision"));
-  const vencim    = fmtFecha(s(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia") || "2099-12-31");
+  const vencimRaw = s(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
+  const vencim    = vencimRaw ? fmtFecha(vencimRaw) : "";  // empty = no incluir el campo
   const tipoPago  = s(row,"tipopago","tipo_pago") || "1";
   const tipoIngr  = s(row,"tipoingresos","tipo_ingresos") || "01";
 
@@ -171,6 +173,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const itbisRet = campoNum(row,"totalitbisretenido","total_itbis_retenido");
   const isrRet   = campoNum(row,"totalisrretencion","total_isr_retencion");
   const indMonto = s(row,"indicadormontogravado","indicador_monto_gravado");
+  const montoNoFact = campoNum(row,"montonofacturable","monto_no_facturable");
 
   let totalesXml = "";
   if (tipo === "43") {
@@ -205,6 +208,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${totItb2   !== undefined ? `<TotalITBIS2>${fmt(totItb2)}</TotalITBIS2>` : ""}
     ${totItb3   !== undefined ? `<TotalITBIS3>${fmt(totItb3)}</TotalITBIS3>` : ""}
     <MontoTotal>${fmt(montoTot)}</MontoTotal>
+    ${montoNoFact !== undefined ? `<MontoNoFacturable>${fmt(montoNoFact)}</MontoNoFacturable>` : ""}
     ${itbisRet  !== undefined ? `<TotalITBISRetenido>${fmt(itbisRet)}</TotalITBISRetenido>` : ""}
     ${isrRet    !== undefined ? `<TotalISRRetencion>${fmt(isrRet)}</TotalISRRetencion>` : ""}
   </Totales>`;
@@ -227,6 +231,10 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     const retISR  = campoNum(row, `montoisrretenido${i}`);
     const indAgen = s(row, `indicadoragenteretencionopercepcion${i}`);
 
+    // IndicadorFacturacion: del Excel (puede ser 0 = no facturable, 1 = normal)
+    // UnidadMedida: del Excel (puede ser vacío para algunos tipos)
+    const unidadM = s(row, `unidadmedida${i}`);
+
     let itemXml = `<Item>
       <NumeroLinea>${i}</NumeroLinea>
       <IndicadorFacturacion>${indFact}</IndicadorFacturacion>`;
@@ -245,7 +253,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
       <NombreItem>${esc(nom.substring(0,80))}</NombreItem>
       <IndicadorBienoServicio>${indBS}</IndicadorBienoServicio>
       <CantidadItem>${fmt(cant)}</CantidadItem>
-      <UnidadMedida>43</UnidadMedida>
+      ${unidadM ? `<UnidadMedida>${unidadM}</UnidadMedida>` : ""}
       <PrecioUnitarioItem>${fmt(precio)}</PrecioUnitarioItem>
       <MontoItem>${fmt(mItem)}</MontoItem>`;
 
@@ -280,14 +288,23 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   // ── IdDoc ──────────────────────────────────────────────────────────────────
   const tiposConIngresos = ["31","32","33","44","45","46"];
   const tiposConPago     = ["31","32","33","34","41","44","45","46","47"];
-  // IndicadorMontoGravado va en IdDoc (XSD: después de FechaVencimientoSecuencia)
+  // Reglas por tipo según XSD:
+  // FechaVencimientoSecuencia: NO en E32, NO en E34
+  // IndicadorNotaCredito: solo E34 (antes de IndicadorMontoGravado)
+  // TipoIngresos: NO en E41, E43, E47
+  const tieneFechaVencim   = !["32","34"].includes(tipo);
+  const tieneNotaCredito   = tipo === "34";
+  const tieneIngresos      = !["41","43","47"].includes(tipo);
+  const indNotaCred        = s(row,"indicadornotacredito","indicador_nota_credito");
+
   const idDocXml = `<IdDoc>
     <TipoeCF>${tipo}</TipoeCF>
     <eNCF>${encf}</eNCF>
-    <FechaVencimientoSecuencia>${vencim}</FechaVencimientoSecuencia>
-    ${indMonto ? `<IndicadorMontoGravado>${indMonto}</IndicadorMontoGravado>` : ""}
-    ${tiposConIngresos.includes(tipo) ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
-    ${tiposConPago.includes(tipo)     ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
+    ${tieneFechaVencim && vencim ? `<FechaVencimientoSecuencia>${vencim}</FechaVencimientoSecuencia>` : ""}
+    ${tieneNotaCredito && indNotaCred ? `<IndicadorNotaCredito>${indNotaCred}</IndicadorNotaCredito>` : ""}
+    ${indMonto     ? `<IndicadorMontoGravado>${indMonto}</IndicadorMontoGravado>` : ""}
+    ${tieneIngresos ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
+    ${tipoPago     ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
   </IdDoc>`;
 
   // ── InformacionReferencia (E33, E34) ──────────────────────────────────────
@@ -330,6 +347,8 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
   const vencim   = fmtFecha(s(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia") || "2099-12-31");
   const tipoPago = s(row,"tipopago","tipo_pago") || "1";
   const tipoIngr = s(row,"tipoingresos","tipo_ingresos") || "01";
+  const rncComp  = s(row,"rnccomprador","rnc_comprador").replace(/\D/g,"");
+  const razonComp = esc(s(row,"razonsocialcomprador","razon_social_comprador"));
   const gravI1   = campoNum(row,"montogravadoi1","monto_gravado_i1");
   const gravI2   = campoNum(row,"montogravadoi2","monto_gravado_i2");
   const gravTot  = campoNum(row,"montogravadototal","monto_gravado_total");
@@ -356,7 +375,8 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
       <FechaEmision>${fechaEm}</FechaEmision>
     </Emisor>
     <Comprador>
-      <RazonSocialComprador>CONSUMIDOR FINAL</RazonSocialComprador>
+      ${rncComp  ? `<RNCComprador>${rncComp}</RNCComprador>` : ""}
+      <RazonSocialComprador>${razonComp || "CONSUMIDOR FINAL"}</RazonSocialComprador>
     </Comprador>
     <Totales>
       ${gravTot  !== undefined ? `<MontoGravadoTotal>${fmt(gravTot)}</MontoGravadoTotal>` : ""}
