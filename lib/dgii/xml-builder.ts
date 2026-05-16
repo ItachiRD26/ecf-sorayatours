@@ -13,6 +13,16 @@ function getTipoPago(terminos: string): string {
 const TIPO_BIEN_SERVICIO  = "2";
 const INDICADOR_FACTURACION = "1";
 
+// Normaliza RNC/Cédula al formato DGII: solo dígitos, 9 u 11 caracteres
+// El formato de display "1-31217656-6" → "131217656" (9 dígitos, sin dígito verificador)
+function fmtRNC(rnc: string): string {
+  const digits = rnc.replace(/\D/g, "");
+  if (digits.length === 9 || digits.length === 11) return digits;
+  // 10 dígitos: el último es dígito verificador del display → tomar primeros 9
+  if (digits.length === 10) return digits.substring(0, 9);
+  return digits;
+}
+
 // Convierte fecha ISO (YYYY-MM-DD) al formato DGII (DD-MM-YYYY)
 function fmtFecha(fecha: string): string {
   if (!fecha) return "";
@@ -41,7 +51,7 @@ interface EmpresaConfig {
 
 // ── Emisor ────────────────────────────────────────────────────────
 function buildEmisor(e: EmpresaConfig, fecha: string): string {
-  const rnc = e.rnc.replace(/\D/g, "");
+  const rnc = fmtRNC(e.rnc);
   return `<Emisor>
     <RNCEmisor>${rnc}</RNCEmisor>
     <RazonSocialEmisor>${escapeXml(e.nombre)}</RazonSocialEmisor>
@@ -54,7 +64,7 @@ function buildEmisor(e: EmpresaConfig, fecha: string): string {
 
 // ── Compradores ───────────────────────────────────────────────────
 function compradorB2B(c: Cliente): string {
-  const rnc = c.rnc?.replace(/\D/g, "") ?? "";
+  const rnc = fmtRNC(c.rnc ?? "");
   return `<Comprador>
     <RNCComprador>${rnc}</RNCComprador>
     <RazonSocialComprador>${escapeXml(c.nombre)}</RazonSocialComprador>
@@ -230,7 +240,7 @@ function buildRFCE(f: Factura, e: EmpresaConfig): string {
       <FechaEmision>${fmtFecha(f.fecha)}</FechaEmision>
     </IdDoc>
     <Emisor>
-      <RNCEmisor>${e.rnc.replace(/\D/g, "")}</RNCEmisor>
+      <RNCEmisor>${fmtRNC(e.rnc)}</RNCEmisor>
       <RazonSocialEmisor>${escapeXml(e.nombre)}</RazonSocialEmisor>
     </Emisor>
     <Resumen>
