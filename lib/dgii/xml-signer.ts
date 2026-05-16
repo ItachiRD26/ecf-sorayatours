@@ -160,7 +160,7 @@ function c14n(node: Node, options?: { defaultNsForPrefix?: Record<string,string>
 function buildSignatureStructure(certBase64: string, digestValue: string): string {
   return (
     `<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">` +
-    `<SignedInfo>` +
+    `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">` +
     `<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />` +
     `<SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" />` +
     `<Reference URI="">` +
@@ -202,7 +202,7 @@ export async function firmarXML(xml: string): Promise<string> {
   // 5. Parsear el XML con la firma e incluida y canonicalizar el <SignedInfo>
   const xmlDoc2    = new DOMParser().parseFromString(xmlConFirma, "text/xml");
   const signedInfo = xmlDoc2.getElementsByTagName("SignedInfo")[0];
-  const siC14n     = c14n(signedInfo, { defaultNsForPrefix: { "": "http://www.w3.org/2000/09/xmldsig#" } });
+  const siC14n     = c14n(signedInfo, { defaultNsForPrefix: { "ds": "http://www.w3.org/2000/09/xmldsig#", "": "http://www.w3.org/2000/09/xmldsig#" } });
 
   // 6. SignatureValue = RSA-SHA256(C14N del SignedInfo)
   const md2 = forge.md.sha256.create();
