@@ -30,14 +30,22 @@ function loadP12(): { privateKeyPem: string; certBase64: string } {
 export async function firmarXML(xml: string): Promise<string> {
   const { privateKeyPem, certBase64 } = loadP12();
 
+  // Detectar nombre del elemento raíz (ECF, RFCE, ANECF, semilla, etc.)
+  // Se necesita porque xml-crypto usa XPath para ubicar el nodo a firmar
+  // y si no hay xpath explícito intenta evaluar uri="" como XPath → error
+  const rootName = (xml.match(/<([A-Za-z][A-Za-z0-9]*)[\s>/]/) ?? [, "ECF"])[1]!;
+  const rootXPath = `//*[local-name(.)='${rootName}']`;
+
   const sig = new SignedXml({
     privateKey:                privateKeyPem,
     signatureAlgorithm:        "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
     canonicalizationAlgorithm: "http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
   });
 
-  // uri:"" + isEmptyUri:true → firma el documento completo sin evaluación XPath
   sig.addReference({
+    // xpath → cómo xml-crypto ENCUENTRA el nodo a firmar internamente
+    // uri   → qué va en <Reference URI=""> en el XML de salida (vacío = documento completo)
+    xpath:           rootXPath,
     uri:             "",
     isEmptyUri:      true,
     transforms:      ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"],
@@ -47,8 +55,10 @@ export async function firmarXML(xml: string): Promise<string> {
   sig.getKeyInfoContent = () =>
     `<X509Data><X509Certificate>${certBase64}</X509Certificate></X509Data>`;
 
-  // Sin location → xml-crypto inserta la firma al final del elemento raíz por defecto
-  sig.computeSignature(xml);
+  // location.reference → dónde insertar el bloque <Signature> en el XML
+  sig.computeSignature(xml, {
+    location: { reference: rootXPath, action: "append" },
+  });
 
   return sig.getSignedXml();
 }
