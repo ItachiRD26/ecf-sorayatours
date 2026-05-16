@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     // Normalizar keys de cada fila
     const rows = rawRows.map(row => {
       const normalized: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(row)) {
+      for (const [k, v] of Object.entries(row as Record<string, unknown>)) {
         normalized[normalizeKey(k)] = v;
       }
       return normalized;
