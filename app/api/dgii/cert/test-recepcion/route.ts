@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     };
   } catch { /* ignore */ }
 
-  const url = "https://ecf.dgii.gov.do/certecf/recepcion/api/ecf";
+  const url = "https://ecf.dgii.gov.do/CerteCF/Recepcion/api/FacturasElectronicas";
 
   const res  = await fetch(url, {
     method:  "POST",
