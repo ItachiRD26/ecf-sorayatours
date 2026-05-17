@@ -131,7 +131,9 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const tieneNotaCredito = tipo === "34";
 
   const vencimRaw = raw(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
-  const vencim    = vencimRaw ? fmtFecha(vencimRaw) : "";
+  // DGII usa "31-12-2028" como placeholder por defecto — si el valor es ese, no enviar
+  const vencimFormatted = vencimRaw ? fmtFecha(vencimRaw) : "";
+  const vencim = vencimFormatted === "31-12-2028" ? "" : vencimFormatted;
 
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
