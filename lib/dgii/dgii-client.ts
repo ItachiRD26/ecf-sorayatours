@@ -115,7 +115,7 @@ export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string, encf
   const token    = tokenExterno || await getToken();
   // DGII requiere filename = RNCEmisor + eNCF + ".xml"
   const rnc      = process.env.DGII_RNC ?? "131217656";
-  const filename = encf ? `${rnc}${encf}.xml` : "rfce.xml";
+  const filename = encf ? `${encf.toLowerCase()}.xml` : "rfce.xml";
   const form  = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 

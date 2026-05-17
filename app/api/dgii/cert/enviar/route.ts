@@ -481,7 +481,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
 
 // ── RFCE — Resumen Factura Consumo < RD$250,000 ───────────────────────────────
 // XSD RFCE: IdDoc(TipoeCF→eNCF→TipoIngresos→TipoPago) — NO FechaVencimientoSecuencia
-function buildRFCE(row: Record<string,unknown>, encf: string): string {
+function buildRFCE(row: Record<string,unknown>, encf: string, codigoSeguridad: string = ""): string {
   const tipo     = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
   const rncEm    = raw(row,"rncemisor","rnc_emisor").replace(/\D/g,"") || "131217656";
   const razonEm  = esc(raw(row,"razonsocialemisor","razon_social_emisor"));
@@ -529,7 +529,7 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
       ${optNum2("TotalITBIS2", totItbis2)}
       <MontoTotal>${fmt2(montoTot)}</MontoTotal>
     </Totales>
-    <CodigoSeguridadeCF>${encf.slice(-6)}</CodigoSeguridadeCF>
+${codigoSeguridad ? `<CodigoSeguridadeCF>${codigoSeguridad}</CodigoSeguridadeCF>` : ""}
   </Encabezado>
 </RFCE>`;
 }
@@ -558,14 +558,21 @@ export async function POST(req: NextRequest) {
     const debugDir = "/tmp/ecf-debug";
     try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
 
-    if (esRFCE) {
-      const rfceXml     = buildRFCE(row, encf);
-      // Guardar XML sin firmar
-      try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
-      const rfceFirmado = await firmarXML(rfceXml);
-      // Guardar XML firmado
-      try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
-      const resultado   = await enviarRFCE(rfceFirmado, undefined, encf);
+if (esRFCE) {
+  // 1ra firma: solo para obtener el SignatureValue y calcular CodigoSeguridadeCF
+  const rfceXmlSinCodigo = buildRFCE(row, encf);
+  const rfceFirmado1     = await firmarXML(rfceXmlSinCodigo);
+  const sigMatch         = rfceFirmado1.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
+  const sigVal           = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
+  const { calcularCodigoSeguridad } = await import("@/lib/dgii/qr-builder");
+  const codigoSeg        = sigVal ? calcularCodigoSeguridad(sigVal) : "";
+
+  // 2da firma: XML con CodigoSeguridadeCF correcto ya incluido
+  const rfceXml          = buildRFCE(row, encf, codigoSeg);
+  try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
+  const rfceFirmado      = await firmarXML(rfceXml);
+  try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
+  const resultado        = await enviarRFCE(rfceFirmado, undefined, encf);
       return NextResponse.json({
         success:     true, encf,
         trackId:     resultado.trackId,
