@@ -3,6 +3,8 @@
 // POST /api/dgii/cert/enviar  { encf: "E410000000010" }
 
 import { NextRequest, NextResponse }  from "next/server";
+import * as fs from "fs";
+import * as path from "path";
 import { adminAuth }                   from "@/lib/firebase-admin";
 import { firmarXML }                   from "@/lib/dgii/xml-signer";
 import { enviarECF, enviarRFCE }       from "@/lib/dgii/dgii-client";
@@ -522,9 +524,17 @@ export async function POST(req: NextRequest) {
 
     const esRFCE = ENCFS_RFCE.has(encf);
 
+    // Guardar XML para inspección manual en /tmp/ecf-debug/
+    const debugDir = "/tmp/ecf-debug";
+    try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
+
     if (esRFCE) {
       const rfceXml     = buildRFCE(row, encf);
+      // Guardar XML sin firmar
+      try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
       const rfceFirmado = await firmarXML(rfceXml);
+      // Guardar XML firmado
+      try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
       const resultado   = await enviarRFCE(rfceFirmado);
       return NextResponse.json({
         success:     true, encf,
@@ -536,7 +546,11 @@ export async function POST(req: NextRequest) {
     }
 
     const xml     = buildXML(row, encf);
+    // Guardar XML sin firmar
+    try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), xml, "utf8"); } catch {}
     const firmado = await firmarXML(xml);
+    // Guardar XML firmado
+    try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), firmado, "utf8"); } catch {}
     const trackId = await enviarECF(firmado);
 
     return NextResponse.json({
@@ -549,6 +563,41 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Error desconocido";
     console.error("[cert/enviar]", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+// ── GET: listar o leer XMLs de debug ─────────────────────────────────────────
+export async function GET(req: NextRequest) {
+  try {
+    if (!await verificarSesion(req))
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+    const { searchParams } = new URL(req.url);
+    const file = searchParams.get("file");
+    const debugDir = "/tmp/ecf-debug";
+
+    if (file) {
+      // Leer un archivo específico
+      const safeName = path.basename(file); // seguridad: solo nombre de archivo
+      const filePath = path.join(debugDir, safeName);
+      try {
+        const content = fs.readFileSync(filePath, "utf8");
+        return new Response(content, { headers: { "Content-Type": "application/xml" } });
+      } catch {
+        return NextResponse.json({ error: `Archivo ${safeName} no encontrado` }, { status: 404 });
+      }
+    }
+
+    // Listar archivos disponibles
+    try {
+      const files = fs.readdirSync(debugDir).sort();
+      return NextResponse.json({ files, dir: debugDir });
+    } catch {
+      return NextResponse.json({ files: [], dir: debugDir, msg: "Sin XMLs generados aún" });
+    }
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "Error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
