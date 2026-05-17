@@ -133,7 +133,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const vencimRaw = raw(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
   // DGII usa "31-12-2028" como placeholder por defecto — si el valor es ese, no enviar
   const vencimFormatted = vencimRaw ? fmtFecha(vencimRaw) : "";
-  const vencim = vencimFormatted === "31-12-2028" ? "" : vencimFormatted;
+  const vencim = vencimFormatted;
 
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
@@ -141,7 +141,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const tipoPagoRaw  = raw(row,"tipopago","tipo_pago");
   const tipoPagoReq  = !["41","43","47"].includes(tipo);
   const tipoPago     = tipoPagoRaw || (tipoPagoReq ? "1" : "");
-  const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
+  const tipoIngr = raw(row,"tipoingresos","tipo_ingresos") || (tieneIngresos ? "01" : "");  
   const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
   const terminoPago  = raw(row,"terminopago","termino_pago");
 
@@ -156,6 +156,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${optDate("FechaLimitePago", fechaLimPago)}
     ${opt("TerminoPago", terminoPago)}
   </IdDoc>`;
+  
 
   // ── Emisor ────────────────────────────────────────────────────────────────
   // Orden XSD: RNC→Razon→NomCom→Sucursal→Direc→Municipio→Provincia→Telefono→
