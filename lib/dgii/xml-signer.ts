@@ -52,15 +52,21 @@ function loadCertAndKey(): { privateKey: forge.pki.rsa.PrivateKey; certBase64: s
 }
 
 // ── Canonicalización C14N 2001 (compatible con validador DGII) ─────────────────
-// Basada en el ejemplo TypeScript de DGII + spec W3C C14N
+// C14N según el comportamiento REAL de DGII (verificado contra semilla firmada y ECF de Oscar):
+// - Los text nodes: elimina \r y \n, descarta el nodo si queda solo whitespace
+// - Esta es la C14N "compacta" que usa la App Firma Digital de DGII (no la W3C estándar)
+// - Resultado: XML compacto sin ningún espacio entre elementos
 function c14nNode(node: Node, inheritedNs: Record<string, string> = {}): string {
-  // Text / CDATA node
+  // Text / CDATA node: DGII elimina \r y \n, ignora nodos de solo whitespace
   if (node.nodeType === 3 || node.nodeType === 4) {
-    return (node.nodeValue ?? "")
+    const val = (node.nodeValue ?? "")
+      .replace(/\r/g, "")   // DGII elimina \r
+      .replace(/\n/g, "");  // DGII elimina \n
+    if (!val.trim()) return ""; // omitir nodos de solo whitespace (espacios)
+    return val
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\r/g, "&#xD;");
+      .replace(/>/g, "&gt;");
   }
   // Comment → ignorar (C14N sin comentarios)
   if (node.nodeType === 8) return "";
