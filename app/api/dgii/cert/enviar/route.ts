@@ -560,7 +560,7 @@ export async function POST(req: NextRequest) {
     const firmado = await firmarXML(xml);
     // Guardar XML firmado
     try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), firmado, "utf8"); } catch {}
-    const trackId = await enviarECF(firmado);
+    const trackId = await enviarECF(firmado, undefined, encf);
 
     return NextResponse.json({
       success:     true, encf, trackId,

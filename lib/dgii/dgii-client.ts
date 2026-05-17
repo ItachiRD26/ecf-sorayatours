@@ -82,10 +82,13 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 // ─── Enviar e-CF → retorna TrackId ───────────────────────────────────────────
-export async function enviarECF(xmlFirmado: string, tokenExterno?: string): Promise<string> {
-  const token = tokenExterno || await getToken();
+export async function enviarECF(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<string> {
+  const token    = tokenExterno || await getToken();
+  // DGII requiere filename = RNCEmisor + eNCF + ".xml" (longitud exacta)
+  const rnc      = process.env.DGII_RNC ?? "131217656";
+  const filename = encf ? `${rnc}${encf}.xml` : "ecf.xml";
   const form  = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "ecf.xml");
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 
   const res  = await fetch(urls().recepcion, {
     method: "POST",
@@ -110,8 +113,9 @@ export async function enviarECF(xmlFirmado: string, tokenExterno?: string): Prom
 // ─── Enviar RFCE ──────────────────────────────────────────────────────────────
 export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<{ trackId: string; estado: string }> {
   const token    = tokenExterno || await getToken();
-  // DGII requiere que el filename sea el eNCF (ej: "E320000000011.xml")
-  const filename = encf ? `${encf}.xml` : "rfce.xml";
+  // DGII requiere filename = RNCEmisor + eNCF + ".xml"
+  const rnc      = process.env.DGII_RNC ?? "131217656";
+  const filename = encf ? `${rnc}${encf}.xml` : "rfce.xml";
   const form  = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 
