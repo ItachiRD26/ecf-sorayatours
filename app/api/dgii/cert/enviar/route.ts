@@ -137,7 +137,10 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
 
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
-  const tipoPago     = raw(row,"tipopago","tipo_pago"); // sin fallback — solo si Excel tiene valor
+  // TipoPago: minOccurs=1 para E31/32/33/34/44/45/46, minOccurs=0 para E41/43/47
+  const tipoPagoRaw  = raw(row,"tipopago","tipo_pago");
+  const tipoPagoReq  = !["41","43","47"].includes(tipo);
+  const tipoPago     = tipoPagoRaw || (tipoPagoReq ? "1" : "");
   const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
   const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
   const terminoPago  = raw(row,"terminopago","termino_pago");
