@@ -500,6 +500,7 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
       ${optNum2("TotalITBIS2", totItbis2)}
       <MontoTotal>${fmt2(montoTot)}</MontoTotal>
     </Totales>
+    <CodigoSeguridadeCF>${encf.slice(-6)}</CodigoSeguridadeCF>
   </Encabezado>
 </RFCE>`;
 }
