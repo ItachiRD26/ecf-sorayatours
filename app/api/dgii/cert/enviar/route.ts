@@ -135,7 +135,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
 
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
-  const tipoPago     = raw(row,"tipopago","tipo_pago") || "1";
+  const tipoPago     = raw(row,"tipopago","tipo_pago"); // sin fallback — solo si Excel tiene valor
   const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
   const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
   const terminoPago  = raw(row,"terminopago","termino_pago");
@@ -147,7 +147,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${tieneNotaCredito ? `<IndicadorNotaCredito>${indNotaCred || "0"}</IndicadorNotaCredito>` : ""}
     ${indMontoGrav !== "" ? `<IndicadorMontoGravado>${indMontoGrav}</IndicadorMontoGravado>` : ""}
     ${tieneIngresos && tipoIngr ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
-    <TipoPago>${tipoPago}</TipoPago>
+    ${tipoPago ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
     ${optDate("FechaLimitePago", fechaLimPago)}
     ${opt("TerminoPago", terminoPago)}
   </IdDoc>`;
@@ -282,6 +282,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   if (tipo === "43") {
     totalesXml = `<Totales>
     ${optNum2("MontoExento", montoEx || montoTot)}
+    ${optNum2("MontoImpuestoAdicional", raw(row,"montoimpuestoadicional","monto_impuesto_adicional"))}
     <MontoTotal>${fmt2(montoTot)}</MontoTotal>
   </Totales>`;
   } else if (tipo === "44") {
@@ -383,7 +384,15 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
       </Retencion>`;
     }
 
-    // Cantidad: entero si es número redondo
+    // Campos adicionales desde Excel (XSD order)
+    const cantRef = raw(row, `cantidadreferencia${i}`);
+    const unidRef = raw(row, `unidadreferencia${i}`);
+    const gradAlc = raw(row, `gradosalcohol${i}`);
+    const precRef = raw(row, `preciounitarioreferencia${i}`);
+    const recMon  = raw(row, `recargomonto${i}`);
+    const tipoSD  = raw(row, `tiposubdescuento${i}`);
+    const pctSD   = raw(row, `subdescuentoporcentaje${i}`);
+    const monSD   = raw(row, `montosubdescuento${i}`);
 
     itemXml += `
       <NombreItem>${esc(nom.substring(0,80))}</NombreItem>
@@ -391,10 +400,16 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
       ${descItem ? `<DescripcionItem>${descItem}</DescripcionItem>` : ""}
       <CantidadItem>${cant || "1"}</CantidadItem>
       ${opt("UnidadMedida", unidMed)}
+      ${cantRef ? `<CantidadReferencia>${cantRef}</CantidadReferencia>` : ""}
+      ${opt("UnidadReferencia", unidRef)}
+      ${gradAlc ? `<GradosAlcohol>${gradAlc}</GradosAlcohol>` : ""}
+      ${precRef ? `<PrecioUnitarioReferencia>${precRef}</PrecioUnitarioReferencia>` : ""}
       ${optDate("FechaElaboracion", fechaElab)}
       ${optDate("FechaVencimientoItem", fechaVencI)}
       <PrecioUnitarioItem>${precio || "0"}</PrecioUnitarioItem>
-      ${optNum2("DescuentoMonto", descMonto)}
+      ${descMonto && !tipoSD ? `<DescuentoMonto>${fmt2(descMonto)}</DescuentoMonto>` : ""}
+      ${tipoSD ? `<TablaSubDescuento><SubDescuento><TipoSubDescuento>${tipoSD}</TipoSubDescuento>${pctSD ? `<SubDescuentoPorcentaje>${pctSD}</SubDescuentoPorcentaje>` : ""}<MontoSubDescuento>${fmt2(monSD)}</MontoSubDescuento></SubDescuento></TablaSubDescuento>` : ""}
+      ${recMon ? `<RecargoMonto>${fmt2(recMon)}</RecargoMonto>` : ""}
       <MontoItem>${fmt2(mItem)}</MontoItem>`;
 
     // ITBIS del ítem o Exento
@@ -487,7 +502,7 @@ function buildRFCE(row: Record<string,unknown>, encf: string): string {
       <TipoeCF>${tipo}</TipoeCF>
       <eNCF>${encf}</eNCF>
       <TipoIngresos>${tipoIngr}</TipoIngresos>
-      <TipoPago>${tipoPago}</TipoPago>
+      ${tipoPago ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
     </IdDoc>
     <Emisor>
       <RNCEmisor>${rncEm}</RNCEmisor>
