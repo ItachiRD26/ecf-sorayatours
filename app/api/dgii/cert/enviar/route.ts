@@ -80,7 +80,9 @@ function fmtFecha(v: string): string {
 const fecha = (row: Record<string,unknown>, ...keys: string[]) =>
   fmtFecha(raw(row, ...keys));
 
-const toNum  = (v: string) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+// toFmt: devuelve string con 2 decimales — el Transformer lo serializa tal cual
+const toFmt  = (v: string) => { const n = parseFloat(v); return isNaN(n) ? undefined : n.toFixed(2); };
+const toNum  = toFmt; // alias para compatibilidad
 const toInt  = (v: string) => { const n = parseInt(v);   return isNaN(n) ? undefined : n; };
 
 // Facturas de consumo RFCE (< RD$250k) — eNCF que van como resumen
@@ -103,7 +105,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
   // ── IdDoc ──────────────────────────────────────────────────────────────────
   const tieneFechaVencim  = !["32","34"].includes(tipo);
   const tieneNotaCredito  = tipo === "34";
-  const tieneIngresos     = !["33","41","43","47"].includes(tipo);
+  const tieneIngresos     = !["41","43","47"].includes(tipo);
   const tipoPagoReq       = !["41","43","47"].includes(tipo);
 
   const vencimRaw = raw(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
