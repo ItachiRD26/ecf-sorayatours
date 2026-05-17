@@ -3,6 +3,9 @@
 // RFCE:      /certecf/recepcionfc/api/recepcion/ecf       ← era /api/rfce (incorrecto)
 // Consulta:  /CerteCF/ConsultaResultado/api/Consultas/Estado
 
+import FormData from "form-data";
+import { Readable } from "stream";
+
 const ECF_HOST = "https://ecf.dgii.gov.do";
 const FC_HOST  = "https://fc.dgii.gov.do";
 
@@ -30,9 +33,18 @@ export async function obtenerSemilla(): Promise<string> {
 }
 
 export async function validarSemilla(xmlFirmado: string): Promise<string> {
+  const buf  = Buffer.from(xmlFirmado, "utf8");
   const form = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "semilla.xml");
-  const res  = await fetch(urls().validarSemilla, { method: "POST", body: form });
+  form.append("xml", Readable.from(buf), {
+    filename:    "semilla.xml",
+    contentType: "text/xml",
+    knownLength: buf.length,
+  });
+  const res = await fetch(urls().validarSemilla, {
+    method:  "POST",
+    headers: { ...form.getHeaders(), "Content-Length": String(form.getLengthSync()) },
+    body:    form as unknown as BodyInit,
+  });
   if (!res.ok) throw new Error(`Validar semilla: ${res.status} ${await res.text()}`);
   const data = await res.json();
   if (!data.token) throw new Error("DGII no devolvió token");
@@ -86,14 +98,24 @@ export async function enviarECF(xmlFirmado: string, tokenExterno?: string, encf?
   const token    = tokenExterno || await getToken();
   // DGII requiere filename = RNCEmisor + eNCF + ".xml" (longitud exacta)
   const rnc      = process.env.DGII_RNC ?? "131217656";
-  const filename = encf ? `${encf.toLowerCase()}.xml` : "rfce.xml";
-  const form  = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
+  const filename = encf ? `${rnc}${encf}.xml` : "ecf.xml";
+
+  const buf  = Buffer.from(xmlFirmado, "utf8");
+  const form = new FormData();
+  form.append("xml", Readable.from(buf), {
+    filename,
+    contentType: "text/xml",
+    knownLength: buf.length,
+  });
 
   const res  = await fetch(urls().recepcion, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: form,
+    method:  "POST",
+    headers: {
+      ...authHeaders(token),
+      ...form.getHeaders(),
+      "Content-Length": String(form.getLengthSync()),
+    },
+    body: form as unknown as BodyInit,
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Envío eCF: ${res.status} — ${text}`);
@@ -113,16 +135,26 @@ export async function enviarECF(xmlFirmado: string, tokenExterno?: string, encf?
 // ─── Enviar RFCE ──────────────────────────────────────────────────────────────
 export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<{ trackId: string; estado: string }> {
   const token    = tokenExterno || await getToken();
-  // DGII requiere filename = RNCEmisor + eNCF + ".xml"
+  // DGII requiere filename = RNCEmisor + eNCF + ".xml" (igual que ECF, en mayúsculas)
   const rnc      = process.env.DGII_RNC ?? "131217656";
-  const filename = encf ? `${encf.toLowerCase()}.xml` : "rfce.xml";
-  const form  = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
+  const filename = encf ? `${rnc}${encf}.xml` : "rfce.xml";
+
+  const buf  = Buffer.from(xmlFirmado, "utf8");
+  const form = new FormData();
+  form.append("xml", Readable.from(buf), {
+    filename,
+    contentType: "text/xml",
+    knownLength: buf.length,
+  });
 
   const res  = await fetch(urls().rfce, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: form,
+    method:  "POST",
+    headers: {
+      ...authHeaders(token),
+      ...form.getHeaders(),
+      "Content-Length": String(form.getLengthSync()),
+    },
+    body: form as unknown as BodyInit,
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Envío RFCE: ${res.status} — ${text}`);
@@ -159,12 +191,21 @@ export async function consultarEstado(trackId: string): Promise<{
 // ─── Anular e-NCF ─────────────────────────────────────────────────────────────
 export async function anularENCF(xmlFirmado: string): Promise<void> {
   const token = await getToken();
+  const buf   = Buffer.from(xmlFirmado, "utf8");
   const form  = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "anulacion.xml");
+  form.append("xml", Readable.from(buf), {
+    filename:    "anulacion.xml",
+    contentType: "text/xml",
+    knownLength: buf.length,
+  });
   const res = await fetch(`${ECF_HOST}/${getAmb()}/anulacion/api/Anulacion`, {
-    method: "POST",
-    headers: authHeaders(token),
-    body: form,
+    method:  "POST",
+    headers: {
+      ...authHeaders(token),
+      ...form.getHeaders(),
+      "Content-Length": String(form.getLengthSync()),
+    },
+    body: form as unknown as BodyInit,
   });
   if (!res.ok) throw new Error(`Anulación: ${res.status} — ${await res.text()}`);
 }

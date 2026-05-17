@@ -565,7 +565,7 @@ if (esRFCE) {
   const sigMatch         = rfceFirmado1.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
   const sigVal           = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
   const { calcularCodigoSeguridad } = await import("@/lib/dgii/qr-builder");
-  const codigoSeg        = sigVal ? calcularCodigoSeguridad(sigVal) : "";
+  const codigoSeg = sigVal ? sigVal.slice(0, 6) : "";
 
   // 2da firma: XML con CodigoSeguridadeCF correcto ya incluido
   const rfceXml          = buildRFCE(row, encf, codigoSeg);
