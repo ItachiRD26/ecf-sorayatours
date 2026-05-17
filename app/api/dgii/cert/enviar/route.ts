@@ -125,15 +125,14 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   // ── IdDoc ─────────────────────────────────────────────────────────────────
   // FechaVencimientoSecuencia: NO en E32 ni E34
   const tieneFechaVencim = !["32","34"].includes(tipo);
-  // TipoIngresos: NO en E41, E43, E47
-  const tieneIngresos    = !["41","43","47"].includes(tipo);
+  // TipoIngresos: NO en E33, E41, E43, E47 (Nota Débito/Compras/Gastos/Exterior)
+  const tieneIngresos    = !["33","41","43","47"].includes(tipo);
   // IndicadorNotaCredito: solo E34 (puede ser "0" o "1")
   const tieneNotaCredito = tipo === "34";
 
   const vencimRaw = raw(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
-  // DGII usa "31-12-2028" como placeholder por defecto — si el valor es ese, no enviar
-  const vencimFormatted = vencimRaw ? fmtFecha(vencimRaw) : "";
-  const vencim = vencimFormatted;
+  // DGII quiere el valor EXACTO del Excel — no filtrar ni transformar
+  const vencim    = vencimRaw ? fmtFecha(vencimRaw) : "";
 
   const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
   const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
@@ -141,7 +140,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const tipoPagoRaw  = raw(row,"tipopago","tipo_pago");
   const tipoPagoReq  = !["41","43","47"].includes(tipo);
   const tipoPago     = tipoPagoRaw || (tipoPagoReq ? "1" : "");
-  const tipoIngr = raw(row,"tipoingresos","tipo_ingresos") || (tieneIngresos ? "01" : "");  
+  const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
   const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
   const terminoPago  = raw(row,"terminopago","termino_pago");
 
@@ -156,7 +155,6 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${optDate("FechaLimitePago", fechaLimPago)}
     ${opt("TerminoPago", terminoPago)}
   </IdDoc>`;
-  
 
   // ── Emisor ────────────────────────────────────────────────────────────────
   // Orden XSD: RNC→Razon→NomCom→Sucursal→Direc→Municipio→Provincia→Telefono→
@@ -264,9 +262,9 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   //            MontoTotal→MontoNoFacturable→MontoPeriodo→SaldoAnterior→
   //            MontoAvancePago→ValorPagar→TotalITBISRetenido→TotalISRRetencion
   const gravTot    = raw(row,"montogravadototal","monto_gravado_total");
-  const gravI1     = raw(row,"montogravadoi1","monto_gravado_i1");
-  const gravI2     = raw(row,"montogravadoi2","monto_gravado_i2");
-  const gravI3     = raw(row,"montogravadoi3","monto_gravado_i3");
+  const gravI1     = raw(row,"montogravadoi1","monto_gravado_i1","montogravado_i1","monto_gravadoi1");
+  const gravI2     = raw(row,"montogravadoi2","monto_gravado_i2","montogravado_i2","monto_gravadoi2");
+  const gravI3     = raw(row,"montogravadoi3","monto_gravado_i3","montogravado_i3","monto_gravadoi3");
   const montoEx    = raw(row,"montoexento","monto_exento");
   const itbis1     = rawNum(row,"itbis1");
   const itbis2     = rawNum(row,"itbis2");
@@ -277,6 +275,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   const totItbis3  = raw(row,"totalitbis3","total_itbis3");
   const montoTot   = raw(row,"montototal","monto_total") || "0";
   const montoNF    = raw(row,"montonofacturable","monto_no_facturable");
+  const montoImpAd = raw(row,"montoimpuestoadicional","monto_impuesto_adicional","montoimpuesto_adicional","monto_impuestoadicional");
   const montoPer   = raw(row,"montoperiodo","monto_periodo");
   const saldoAnt   = raw(row,"saldoanterior","saldo_anterior");
   const avancePag  = raw(row,"montoavancepago","monto_avance_pago");
@@ -288,7 +287,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   if (tipo === "43") {
     totalesXml = `<Totales>
     ${optNum2("MontoExento", montoEx || montoTot)}
-    ${optNum2("MontoImpuestoAdicional", raw(row,"montoimpuestoadicional","monto_impuesto_adicional"))}
+    ${optNum2("MontoImpuestoAdicional", montoImpAd)}
     <MontoTotal>${fmt2(montoTot)}</MontoTotal>
   </Totales>`;
   } else if (tipo === "44") {
@@ -340,6 +339,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${optNum2("TotalITBIS1", totItbis1)}
     ${optNum2("TotalITBIS2", totItbis2)}
     ${optNum2("TotalITBIS3", totItbis3)}
+    ${optNum2("MontoImpuestoAdicional", montoImpAd)}
     <MontoTotal>${fmt2(montoTot)}</MontoTotal>
     ${optNum2("MontoNoFacturable", montoNF)}
     ${optNum2("MontoPeriodo", montoPer)}
@@ -396,9 +396,9 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     const gradAlc = raw(row, `gradosalcohol${i}`);
     const precRef = raw(row, `preciounitarioreferencia${i}`);
     const recMon  = raw(row, `recargomonto${i}`);
-    const tipoSD  = raw(row, `tiposubdescuento${i}`);
-    const pctSD   = raw(row, `subdescuentoporcentaje${i}`);
-    const monSD   = raw(row, `montosubdescuento${i}`);
+    const tipoSD  = raw(row, `tiposubdescuento${i}`, `tipo_sub_descuento${i}`, `tiposubdescuento`);
+    const pctSD   = raw(row, `subdescuentoporcentaje${i}`, `sub_descuento_porcentaje${i}`, `subdescuentoporcentaje`);
+    const monSD   = raw(row, `montosubdescuento${i}`, `monto_sub_descuento${i}`, `montosubdescuento`);
 
     itemXml += `
       <NombreItem>${esc(nom.substring(0,80))}</NombreItem>
@@ -481,7 +481,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
 
 // ── RFCE — Resumen Factura Consumo < RD$250,000 ───────────────────────────────
 // XSD RFCE: IdDoc(TipoeCF→eNCF→TipoIngresos→TipoPago) — NO FechaVencimientoSecuencia
-function buildRFCE(row: Record<string,unknown>, encf: string, codigoSeguridad: string = ""): string {
+function buildRFCE(row: Record<string,unknown>, encf: string): string {
   const tipo     = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
   const rncEm    = raw(row,"rncemisor","rnc_emisor").replace(/\D/g,"") || "131217656";
   const razonEm  = esc(raw(row,"razonsocialemisor","razon_social_emisor"));
@@ -529,7 +529,7 @@ function buildRFCE(row: Record<string,unknown>, encf: string, codigoSeguridad: s
       ${optNum2("TotalITBIS2", totItbis2)}
       <MontoTotal>${fmt2(montoTot)}</MontoTotal>
     </Totales>
-${codigoSeguridad ? `<CodigoSeguridadeCF>${codigoSeguridad}</CodigoSeguridadeCF>` : ""}
+    <CodigoSeguridadeCF>${encf.slice(-6)}</CodigoSeguridadeCF>
   </Encabezado>
 </RFCE>`;
 }
@@ -558,21 +558,14 @@ export async function POST(req: NextRequest) {
     const debugDir = "/tmp/ecf-debug";
     try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
 
-if (esRFCE) {
-  // 1ra firma: solo para obtener el SignatureValue y calcular CodigoSeguridadeCF
-  const rfceXmlSinCodigo = buildRFCE(row, encf);
-  const rfceFirmado1     = await firmarXML(rfceXmlSinCodigo);
-  const sigMatch         = rfceFirmado1.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
-  const sigVal           = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
-  const { calcularCodigoSeguridad } = await import("@/lib/dgii/qr-builder");
-  const codigoSeg = sigVal ? sigVal.slice(0, 6) : "";
-
-  // 2da firma: XML con CodigoSeguridadeCF correcto ya incluido
-  const rfceXml          = buildRFCE(row, encf, codigoSeg);
-  try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
-  const rfceFirmado      = await firmarXML(rfceXml);
-  try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
-  const resultado        = await enviarRFCE(rfceFirmado, undefined, encf);
+    if (esRFCE) {
+      const rfceXml     = buildRFCE(row, encf);
+      // Guardar XML sin firmar
+      try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
+      const rfceFirmado = await firmarXML(rfceXml);
+      // Guardar XML firmado
+      try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
+      const resultado   = await enviarRFCE(rfceFirmado, undefined, encf);
       return NextResponse.json({
         success:     true, encf,
         trackId:     resultado.trackId,

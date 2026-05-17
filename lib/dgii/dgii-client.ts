@@ -1,17 +1,14 @@
 // Cliente DGII — URLs corregidas según Swagger oficial certecf
-// Recepción: /CerteCF/Recepcion/api/FacturasElectronicas
-// RFCE:      /certecf/recepcionfc/api/recepcion/ecf
+// Recepción: /CerteCF/Recepcion/api/FacturasElectronicas  ← era /api/ecf (incorrecto)
+// RFCE:      /certecf/recepcionfc/api/recepcion/ecf       ← era /api/rfce (incorrecto)
 // Consulta:  /CerteCF/ConsultaResultado/api/Consultas/Estado
-
-import FormData from "form-data";
-import { Readable } from "stream";
-import axios from "axios";
 
 const ECF_HOST = "https://ecf.dgii.gov.do";
 const FC_HOST  = "https://fc.dgii.gov.do";
 
 function getAmb(): string { return process.env.DGII_AMBIENTE ?? "testecf"; }
 
+// Rutas según Swagger oficial
 function urls() {
   const amb = getAmb();
   return {
@@ -33,24 +30,11 @@ export async function obtenerSemilla(): Promise<string> {
 }
 
 export async function validarSemilla(xmlFirmado: string): Promise<string> {
-  const buf  = Buffer.from(xmlFirmado, "utf8");
   const form = new FormData();
-  form.append("xml", Readable.from(buf), {
-    filename:    "semilla.xml",
-    contentType: "text/xml",
-    knownLength: buf.length,
-  });
-
-  const res = await axios.post(urls().validarSemilla, form, {
-    headers: {
-      ...form.getHeaders(),
-      "Content-Length": String(form.getLengthSync()),
-    },
-    validateStatus: () => true,
-  });
-
-  if (res.status >= 400) throw new Error(`Validar semilla: ${res.status} ${JSON.stringify(res.data)}`);
-  const data = res.data;
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "semilla.xml");
+  const res  = await fetch(urls().validarSemilla, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Validar semilla: ${res.status} ${await res.text()}`);
+  const data = await res.json();
   if (!data.token) throw new Error("DGII no devolvió token");
   tokenCache = { token: data.token, expira: new Date(data.expira) };
   return data.token;
@@ -100,34 +84,26 @@ function authHeaders(token: string): Record<string, string> {
 // ─── Enviar e-CF → retorna TrackId ───────────────────────────────────────────
 export async function enviarECF(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<string> {
   const token    = tokenExterno || await getToken();
+  // DGII requiere filename = RNCEmisor + eNCF + ".xml" (longitud exacta)
   const rnc      = process.env.DGII_RNC ?? "131217656";
   const filename = encf ? `${rnc}${encf}.xml` : "ecf.xml";
+  const form  = new FormData();
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 
-  const buf  = Buffer.from(xmlFirmado, "utf8");
-  const form = new FormData();
-  form.append("xml", Readable.from(buf), {
-    filename,
-    contentType: "text/xml",
-    knownLength: buf.length,
+  const res  = await fetch(urls().recepcion, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form,
   });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Envío eCF: ${res.status} — ${text}`);
 
-  const res = await axios.post(urls().recepcion, form, {
-    headers: {
-      ...authHeaders(token),
-      ...form.getHeaders(),
-      "Content-Length": String(form.getLengthSync()),
-    },
-    validateStatus: () => true,
-  });
-
-  const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
-  if (res.status >= 400) throw new Error(`Envío eCF: ${res.status} — ${text}`);
-
-  const data = typeof res.data === "string"
-    ? (() => { try { return JSON.parse(res.data); } catch { return {}; } })()
-    : res.data;
-  if (data.trackId) return data.trackId;
-  if (data.error)   throw new Error(data.error);
+  // Respuesta: { trackId, error, mensaje }
+  try {
+    const data = JSON.parse(text);
+    if (data.trackId) return data.trackId;
+    if (data.error)   throw new Error(data.error);
+  } catch { /* si no es JSON, buscar trackId en texto */ }
 
   const match = text.match(/"trackId"\s*:\s*"([^"]+)"/);
   if (match) return match[1];
@@ -137,36 +113,29 @@ export async function enviarECF(xmlFirmado: string, tokenExterno?: string, encf?
 // ─── Enviar RFCE ──────────────────────────────────────────────────────────────
 export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<{ trackId: string; estado: string }> {
   const token    = tokenExterno || await getToken();
+  // DGII requiere filename = RNCEmisor + eNCF + ".xml"
   const rnc      = process.env.DGII_RNC ?? "131217656";
   const filename = encf ? `${rnc}${encf}.xml` : "rfce.xml";
+  const form  = new FormData();
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 
-  const buf  = Buffer.from(xmlFirmado, "utf8");
-  const form = new FormData();
-  form.append("xml", Readable.from(buf), {
-    filename,
-    contentType: "text/xml",
-    knownLength: buf.length,
+  const res  = await fetch(urls().rfce, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form,
   });
+  const text = await res.text();
+  if (!res.ok) throw new Error(`Envío RFCE: ${res.status} — ${text}`);
 
-  const res = await axios.post(urls().rfce, form, {
-    headers: {
-      ...authHeaders(token),
-      ...form.getHeaders(),
-      "Content-Length": String(form.getLengthSync()),
-    },
-    validateStatus: () => true,
-  });
-
-  const text = typeof res.data === "string" ? res.data : JSON.stringify(res.data);
-  if (res.status >= 400) throw new Error(`Envío RFCE: ${res.status} — ${text}`);
-
-  const data = typeof res.data === "string"
-    ? (() => { try { return JSON.parse(res.data); } catch { return {}; } })()
-    : res.data;
-  return {
-    trackId: data.encf  ?? data.trackId ?? "",
-    estado:  data.estado ?? "",
-  };
+  try {
+    const data = JSON.parse(text);
+    return {
+      trackId: data.encf  ?? data.trackId ?? "",
+      estado:  data.estado ?? "",
+    };
+  } catch {
+    return { trackId: "", estado: text };
+  }
 }
 
 // ─── Consultar estado por TrackId ─────────────────────────────────────────────
@@ -190,22 +159,12 @@ export async function consultarEstado(trackId: string): Promise<{
 // ─── Anular e-NCF ─────────────────────────────────────────────────────────────
 export async function anularENCF(xmlFirmado: string): Promise<void> {
   const token = await getToken();
-  const buf   = Buffer.from(xmlFirmado, "utf8");
   const form  = new FormData();
-  form.append("xml", Readable.from(buf), {
-    filename:    "anulacion.xml",
-    contentType: "text/xml",
-    knownLength: buf.length,
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "anulacion.xml");
+  const res = await fetch(`${ECF_HOST}/${getAmb()}/anulacion/api/Anulacion`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: form,
   });
-
-  const res = await axios.post(`${ECF_HOST}/${getAmb()}/anulacion/api/Anulacion`, form, {
-    headers: {
-      ...authHeaders(token),
-      ...form.getHeaders(),
-      "Content-Length": String(form.getLengthSync()),
-    },
-    validateStatus: () => true,
-  });
-
-  if (res.status >= 400) throw new Error(`Anulación: ${res.status} — ${JSON.stringify(res.data)}`);
+  if (!res.ok) throw new Error(`Anulación: ${res.status} — ${await res.text()}`);
 }
