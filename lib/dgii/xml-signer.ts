@@ -190,10 +190,9 @@ export async function firmarXML(xmlOriginal: string): Promise<string> {
       `</KeyInfo>` +
     `</Signature>`;
 
-  // PASO 5: Insertar firma en el XML CANONICALIZADO (no el original)
-  // Esto es clave: DGII verifica haciendo C14N del XML recibido (sin Signature).
-  // Si enviamos canon1 + Signature, entonces C14N(canon1) = canon1 (idempotente),
-  // y el digest coincide con el que calculamos en PASO 1.
+  // PASO 5: Insertar Signature en el XML CANONICALIZADO
+  // FechaHoraFirma ya viene incluida en el XML de entrada (buildXML la añade),
+  // por lo que ya está en canon1 y forma parte del DigestValue.
   const closingTag = `</${rootName}>`;
   const idx        = canon1.lastIndexOf(closingTag);
   if (idx === -1) throw new Error(`Tag de cierre </${rootName}> no encontrado en XML canonicalizado`);

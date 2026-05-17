@@ -434,6 +434,13 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
   </InformacionReferencia>`
     : "";
 
+  // FechaHoraFirma: DD-MM-YYYY HH:MM:SS en hora local (24h, sin AM/PM)
+  const _now = new Date();
+  const _pad = (n: number) => String(n).padStart(2,"0");
+  const fechaHoraFirma =
+    `${_pad(_now.getDate())}-${_pad(_now.getMonth()+1)}-${_now.getFullYear()} ` +
+    `${_pad(_now.getHours())}:${_pad(_now.getMinutes())}:${_pad(_now.getSeconds())}`;
+
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -447,6 +454,7 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     ${items.join("\n    ")}
   </DetallesItems>
   ${infoRef}
+  <FechaHoraFirma>${fechaHoraFirma}</FechaHoraFirma>
 </ECF>`;
 }
 
@@ -536,7 +544,7 @@ export async function POST(req: NextRequest) {
       const rfceFirmado = await firmarXML(rfceXml);
       // Guardar XML firmado
       try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
-      const resultado   = await enviarRFCE(rfceFirmado);
+      const resultado   = await enviarRFCE(rfceFirmado, undefined, encf);
       return NextResponse.json({
         success:     true, encf,
         trackId:     resultado.trackId,

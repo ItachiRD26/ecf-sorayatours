@@ -108,10 +108,12 @@ export async function enviarECF(xmlFirmado: string, tokenExterno?: string): Prom
 }
 
 // ─── Enviar RFCE ──────────────────────────────────────────────────────────────
-export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string): Promise<{ trackId: string; estado: string }> {
-  const token = tokenExterno || await getToken();
+export async function enviarRFCE(xmlFirmado: string, tokenExterno?: string, encf?: string): Promise<{ trackId: string; estado: string }> {
+  const token    = tokenExterno || await getToken();
+  // DGII requiere que el filename sea el eNCF (ej: "E320000000011.xml")
+  const filename = encf ? `${encf}.xml` : "rfce.xml";
   const form  = new FormData();
-  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "rfce.xml");
+  form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);
 
   const res  = await fetch(urls().rfce, {
     method: "POST",
