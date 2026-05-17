@@ -165,15 +165,14 @@ export async function firmarXML(xmlOriginal: string): Promise<string> {
       `</Reference>` +
     `</SignedInfo>`;
 
-  // PASO 3: Canonicalizar <SignedInfo> y firmar con RSA-SHA256
-  // CRÍTICO: SignedInfo va DENTRO de <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-  // Por eso el namespace ya está en scope del padre — C14N NO debe re-emitir xmlns en SignedInfo.
-  // Pasamos el namespace del padre como "heredado" para que c14nNode no lo emita de nuevo.
-  // Así nuestro canonical(SignedInfo) = "<SignedInfo><CanonicalizationMethod...>" (sin xmlns)
-  // que coincide con lo que DGII verifica al extraer SignedInfo del Signature completo.
-  const siDoc        = new DOMParser().parseFromString(signedInfoXml, "text/xml");
-  const canon2       = c14nNode(siDoc.documentElement as unknown as Node,
-                                 { "": "http://www.w3.org/2000/09/xmldsig#" });
+  // PASO 3: Canonicalizar <SignedInfo> STANDALONE y firmar con RSA-SHA256
+  // CRÍTICO: DGII verifica el SignedInfo de forma STANDALONE (no con contexto del padre Signature).
+  // Por eso debemos firmar el C14N con xmlns="..." explícito — igual que un documento independiente.
+  // Verificado: valid_no_xmlns = ✗, valid_with_xmlns = ✓ usando la clave pública del certificado.
+  const canon2       = c14nNode(
+    new DOMParser().parseFromString(signedInfoXml, "text/xml").documentElement as unknown as Node,
+    {}   // ← sin namespace heredado: el xmlns="..." se emite explícitamente en el output
+  );
   const md2          = forge.md.sha256.create();
   md2.update(canon2, "utf8");
   const sigBytes     = privateKey.sign(md2);
