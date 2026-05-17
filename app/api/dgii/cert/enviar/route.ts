@@ -1,15 +1,43 @@
 // API Route — Envía un caso del set de pruebas DGII (Paso 2 Certificación)
-// Lee los datos EXACTOS del Excel (Firebase Storage) y construye el XML campo a campo.
+// Usa la librería dgii-ecf para firma y envío — NO reinventamos la rueda.
 // POST /api/dgii/cert/enviar  { encf: "E410000000010" }
 
 import { NextRequest, NextResponse }  from "next/server";
-import * as fs from "fs";
-import * as path from "path";
+import path                            from "path";
 import { adminAuth }                   from "@/lib/firebase-admin";
-import { firmarXML }                   from "@/lib/dgii/xml-signer";
-import { enviarECF, enviarRFCE }       from "@/lib/dgii/dgii-client";
-import { getAllRowsFromStorage }         from "@/app/api/dgii/cert/upload-set/route";
+import { getAllRowsFromStorage }        from "@/app/api/dgii/cert/upload-set/route";
+import ECF, {
+  P12Reader,
+  Signature,
+  ENVIRONMENT,
+  convertECF32ToRFCE,
+} from "dgii-ecf";
 
+// ── Configuración ──────────────────────────────────────────────────────────────
+const RNC_EMISOR   = process.env.DGII_RNC           ?? "131217656";
+const CERT_PATH    = process.env.DGII_CERT_PATH     ?? "";
+const CERT_PASS    = process.env.DGII_CERT_PASSWORD ?? "";
+const AMBIENTE     = (process.env.DGII_AMBIENTE     ?? "certecf").toLowerCase();
+
+// Mapea el string de .env al enum de la librería
+function getEnv(): ENVIRONMENT {
+  if (AMBIENTE.includes("prod") || AMBIENTE === "ecf") return ENVIRONMENT.PROD;
+  if (AMBIENTE.includes("cert"))                        return ENVIRONMENT.CERT;
+  return ENVIRONMENT.DEV;
+}
+
+// Carga el certificado una sola vez (en memoria, no por request)
+let _certs: { key: string; cert: string } | null = null;
+function getCerts() {
+  if (_certs) return _certs;
+  const reader = new P12Reader(CERT_PASS);
+  const data   = reader.getKeyFromFile(path.resolve(CERT_PATH));
+  if (!data.key || !data.cert) throw new Error("No se pudo leer el certificado .p12");
+  _certs = { key: data.key, cert: data.cert };
+  return _certs;
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
 async function verificarSesion(req: NextRequest): Promise<boolean> {
   const cookie = req.cookies.get("__session")?.value;
   if (!cookie) return false;
@@ -17,8 +45,7 @@ async function verificarSesion(req: NextRequest): Promise<boolean> {
   catch { return false; }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-// '#e' = campo vacío en el Excel de DGII
+// ── Helpers lectura Excel ──────────────────────────────────────────────────────
 const DGII_EMPTY = new Set(["#e", "#E"]);
 
 function raw(row: Record<string,unknown>, ...keys: string[]): string {
@@ -31,43 +58,12 @@ function raw(row: Record<string,unknown>, ...keys: string[]): string {
   }
   return "";
 }
-
-// Número sin filtrar "0" — para IndicadorMontoGravado, ITBIS, etc.
 function rawNum(row: Record<string,unknown>, ...keys: string[]): string {
-  for (const k of keys) {
-    const v = row[k];
-    if (v !== undefined && v !== null) {
-      const s = String(v).trim();
-      if (s !== "" && !DGII_EMPTY.has(s)) return s;
-    }
-  }
-  return "";
+  return raw(row, ...keys); // sin filtrar "0"
 }
 
-const esc = (s: string) => s
-  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-  .replace(/"/g,"&quot;").replace(/'/g,"&apos;");
-
-// 2 decimales (montos)
-const fmt2 = (v: string | number) => {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return isNaN(n) ? "0.00" : n.toFixed(2);
-};
-// 4 decimales (precios unitarios — DGII espera 4 dec)
-const fmt4 = (v: string | number) => {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return isNaN(n) ? "0.0000" : n.toFixed(4);
-};
-// Entero (ITBIS tasas, cantidades)
-const fmtInt = (v: string | number) => {
-  const n = typeof v === "string" ? parseFloat(v) : v;
-  return isNaN(n) ? "0" : String(Math.round(n));
-};
-
-// Fecha: YYYY-MM-DD o serial Excel → DD-MM-YYYY
 function fmtFecha(v: string): string {
   if (!v) return "";
-  // Excel serial number
   if (/^\d{5}$/.test(v)) {
     const d = new Date((Number(v) - 25569) * 86400000);
     return `${String(d.getUTCDate()).padStart(2,"0")}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${d.getUTCFullYear()}`;
@@ -81,282 +77,225 @@ function fmtFecha(v: string): string {
   }
   return v;
 }
-
-// Helper: leer fecha del Excel
 const fecha = (row: Record<string,unknown>, ...keys: string[]) =>
   fmtFecha(raw(row, ...keys));
 
-// Helper: elemento XML opcional — solo si hay valor
-const opt = (tag: string, val: string) =>
-  val ? `<${tag}>${esc(val)}</${tag}>` : "";
-const optDate = (tag: string, val: string) =>
-  val ? `<${tag}>${val}</${tag}>` : "";
-const optNum2 = (tag: string, val: string) =>
-  val ? `<${tag}>${fmt2(val)}</${tag}>` : "";
-const optInt = (tag: string, val: string) =>
-  val ? `<${tag}>${fmtInt(val)}</${tag}>` : "";
+const toNum  = (v: string) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };
+const toInt  = (v: string) => { const n = parseInt(v);   return isNaN(n) ? undefined : n; };
 
-// Facturas de consumo que van como RFCE (< RD$250k)
-const ENCFS_RFCE = new Set(["E320000000011","E320000000013","E320000000014","E320000000015"]);
+// Facturas de consumo RFCE (< RD$250k) — eNCF que van como resumen
+const ENCFS_RFCE = new Set([
+  "E320000000011","E320000000013","E320000000014","E320000000015"
+]);
 
-// Buscar fila del Excel por eNCF
-function buscarFila(rows: Record<string,unknown>[], encf: string): Record<string,unknown> | null {
-  const t = encf.toUpperCase().replace(/\s/g,"");
-  for (const row of rows) {
-    if (String(row["encf"] ?? "").trim().toUpperCase().replace(/\s/g,"") === t) return row;
-  }
-  return null;
+function tipoECF(encf: string, rawTipo: string): string {
+  const fromEncf = encf.match(/^E(\d{2})/)?.[1];
+  return rawTipo || fromEncf || "31";
 }
 
-// Tipo de ECF: "E410000000010" → "41"
-function tipoECF(encf: string, rowTipo: string): string {
-  if (rowTipo) {
-    const t = rowTipo.replace(/[^0-9]/g,"");
-    if (t.length >= 2) return t.substring(0,2);
-  }
-  const m = encf.match(/^E(\d{2})/i);
-  return m ? m[1] : "32";
-}
-
-// ── BUILDER PRINCIPAL ECF ─────────────────────────────────────────────────────
-function buildXML(row: Record<string,unknown>, encf: string): string {
+// ── Constructor de JSON para la librería ───────────────────────────────────────
+// La librería usa Transformer.json2xml() que serializa JSON → XML
+// El JSON sigue EXACTAMENTE la estructura del XSD (mismos nombres de campos)
+// Los campos opcionales ausentes simplemente no se incluyen → no se generan tags vacíos
+function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,unknown> {
   const tipo = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
 
-  // ── IdDoc ─────────────────────────────────────────────────────────────────
-  // FechaVencimientoSecuencia: NO en E32 ni E34
-  const tieneFechaVencim = !["32","34"].includes(tipo);
-  // TipoIngresos: NO en E33, E41, E43, E47 (Nota Débito/Compras/Gastos/Exterior)
-  const tieneIngresos    = !["33","41","43","47"].includes(tipo);
-  // IndicadorNotaCredito: solo E34 (puede ser "0" o "1")
-  const tieneNotaCredito = tipo === "34";
+  // ── IdDoc ──────────────────────────────────────────────────────────────────
+  const tieneFechaVencim  = !["32","34"].includes(tipo);
+  const tieneNotaCredito  = tipo === "34";
+  const tieneIngresos     = !["33","41","43","47"].includes(tipo);
+  const tipoPagoReq       = !["41","43","47"].includes(tipo);
 
   const vencimRaw = raw(row,"fechavencimientosecuencia","fecha_vencimiento_secuencia");
-  // DGII quiere el valor EXACTO del Excel — no filtrar ni transformar
   const vencim    = vencimRaw ? fmtFecha(vencimRaw) : "";
+  const tipoPagoRaw = raw(row,"tipopago","tipo_pago");
+  const tipoPago  = tipoPagoRaw || (tipoPagoReq ? "1" : "");
+  const tipoIngr  = raw(row,"tipoingresos","tipo_ingresos");
+  const indMonGr  = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
+  const indNotaC  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
+  const fechaLimP = fecha(row,"fechalimitepago","fecha_limite_pago");
+  const termPago  = raw(row,"terminopago","termino_pago");
 
-  const indMontoGrav = rawNum(row,"indicadormontogravado","indicador_monto_gravado");
-  const indNotaCred  = rawNum(row,"indicadornotacredito","indicador_nota_credito");
-  // TipoPago: minOccurs=1 para E31/32/33/34/44/45/46, minOccurs=0 para E41/43/47
-  const tipoPagoRaw  = raw(row,"tipopago","tipo_pago");
-  const tipoPagoReq  = !["41","43","47"].includes(tipo);
-  const tipoPago     = tipoPagoRaw || (tipoPagoReq ? "1" : "");
-  const tipoIngr     = raw(row,"tipoingresos","tipo_ingresos"); // sin fallback: si Excel vacío, no enviar
-  const fechaLimPago = fecha(row,"fechalimitepago","fecha_limite_pago");
-  const terminoPago  = raw(row,"terminopago","termino_pago");
+  const IdDoc: Record<string,unknown> = {
+    TipoeCF: tipo,
+    eNCF: encf,
+    ...(tieneFechaVencim && vencim   ? { FechaVencimientoSecuencia: vencim } : {}),
+    ...(tieneNotaCredito             ? { IndicadorNotaCredito: indNotaC || "0" } : {}),
+    ...(indMonGr !== ""              ? { IndicadorMontoGravado: indMonGr } : {}),
+    ...(tieneIngresos && tipoIngr    ? { TipoIngresos: tipoIngr } : {}),
+    ...(tipoPago                     ? { TipoPago: tipoPago } : {}),
+    ...(fechaLimP                    ? { FechaLimitePago: fechaLimP } : {}),
+    ...(termPago                     ? { TerminoPago: termPago } : {}),
+  };
 
-  const idDocXml = `<IdDoc>
-    <TipoeCF>${tipo}</TipoeCF>
-    <eNCF>${encf}</eNCF>
-    ${tieneFechaVencim && vencim ? `<FechaVencimientoSecuencia>${vencim}</FechaVencimientoSecuencia>` : ""}
-    ${tieneNotaCredito ? `<IndicadorNotaCredito>${indNotaCred || "0"}</IndicadorNotaCredito>` : ""}
-    ${indMontoGrav !== "" ? `<IndicadorMontoGravado>${indMontoGrav}</IndicadorMontoGravado>` : ""}
-    ${tieneIngresos && tipoIngr ? `<TipoIngresos>${tipoIngr}</TipoIngresos>` : ""}
-    ${tipoPago ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
-    ${optDate("FechaLimitePago", fechaLimPago)}
-    ${opt("TerminoPago", terminoPago)}
-  </IdDoc>`;
+  // ── Emisor ─────────────────────────────────────────────────────────────────
+  const rncEm     = raw(row,"rncemisor","rnc_emisor").replace(/\D/g,"") || RNC_EMISOR;
+  const razonEm   = raw(row,"razonsocialemisor","razon_social_emisor");
+  const nomCom    = raw(row,"nombrecomercial","nombre_comercial");
+  const dirEm     = raw(row,"direccionemisor","direccion_emisor");
+  const muni      = raw(row,"municipio");
+  const prov      = raw(row,"provincia");
+  const telEm1    = raw(row,"telefonoemisor1","telefonoemisor");
+  const correoEm  = raw(row,"correoemisor","correo_emisor");
+  const webSite   = raw(row,"website","web_site");
+  const actEcon   = raw(row,"actividadeconomica","actividad_economica");
+  const codVend   = raw(row,"codigovendedor","codigo_vendedor");
+  const noFactInt = raw(row,"numerofacturainterna","numero_factura_interna");
+  const noPedido  = raw(row,"numeropedidointerno","numero_pedido_interno");
+  const zonaVenta = raw(row,"zonaventa","zona_venta");
+  const rutaVenta = raw(row,"rutaventa","ruta_venta");
+  const infoEmis  = raw(row,"informacionadicionalemisor","informacion_adicional_emisor");
+  const fechaEm   = fmtFecha(raw(row,"fechaemision","fecha_emision"));
 
-  // ── Emisor ────────────────────────────────────────────────────────────────
-  // Orden XSD: RNC→Razon→NomCom→Sucursal→Direc→Municipio→Provincia→Telefono→
-  //            Correo→WebSite→Actividad→CodVendedor→NoFactInterna→NoPedido→
-  //            ZonaVenta→RutaVenta→InfoAdicional→FechaEmision
-  const rncEm       = raw(row,"rncemisor","rnc_emisor").replace(/\D/g,"") || "131217656";
-  const razonEm     = esc(raw(row,"razonsocialemisor","razon_social_emisor"));
-  const nomCom      = esc(raw(row,"nombrecomercial","nombre_comercial"));
-  const dirEm       = esc(raw(row,"direccionemisor","direccion_emisor"));
-  const muni        = raw(row,"municipio");
-  const prov        = raw(row,"provincia");
-  const telEm1      = raw(row,"telefonoemisor1","telefonoemisor");
-  const correoEm    = esc(raw(row,"correoemisor","correo_emisor"));
-  const webSite     = esc(raw(row,"website","web_site"));
-  const actEcon     = esc(raw(row,"actividadeconomica","actividad_economica"));
-  const codVend     = esc(raw(row,"codigovendedor","codigo_vendedor"));
-  const noFactInt   = raw(row,"numerofacturainterna","numero_factura_interna");
-  const noPedido    = raw(row,"numeropedidointerno","numero_pedido_interno");
-  const zonaVenta   = esc(raw(row,"zonaventa","zona_venta"));
-  const rutaVenta   = esc(raw(row,"rutaventa","ruta_venta"));
-  const infoEmis    = esc(raw(row,"informacionadicionalemisor","informacion_adicional_emisor"));
-  const fechaEm     = fmtFecha(raw(row,"fechaemision","fecha_emision"));
+  const Emisor: Record<string,unknown> = {
+    RNCEmisor: rncEm,
+    RazonSocialEmisor: razonEm,
+    ...(nomCom    ? { NombreComercial: nomCom } : {}),
+    ...(dirEm     ? { DireccionEmisor: dirEm } : {}),
+    ...(muni      ? { Municipio: muni } : {}),
+    ...(prov      ? { Provincia: prov } : {}),
+    ...(telEm1    ? { TablaTelefonoEmisor: { TelefonoEmisor: telEm1 } } : {}),
+    ...(correoEm  ? { CorreoEmisor: correoEm } : {}),
+    ...(webSite   ? { WebSite: webSite } : {}),
+    ...(actEcon   ? { ActividadEconomica: actEcon } : {}),
+    ...(codVend   ? { CodigoVendedor: codVend } : {}),
+    ...(noFactInt ? { NumeroFacturaInterna: noFactInt } : {}),
+    ...(noPedido  ? { NumeroPedidoInterno: noPedido } : {}),
+    ...(zonaVenta ? { ZonaVenta: zonaVenta } : {}),
+    ...(rutaVenta ? { RutaVenta: rutaVenta } : {}),
+    ...(infoEmis  ? { InformacionAdicionalEmisor: infoEmis } : {}),
+    FechaEmision: fechaEm,
+  };
 
-  const emisorXml = `<Emisor>
-    <RNCEmisor>${rncEm}</RNCEmisor>
-    <RazonSocialEmisor>${razonEm}</RazonSocialEmisor>
-    ${opt("NombreComercial", nomCom)}
-    ${dirEm ? `<DireccionEmisor>${dirEm}</DireccionEmisor>` : ""}
-    ${opt("Municipio", muni)}
-    ${opt("Provincia", prov)}
-    ${telEm1 ? `<TablaTelefonoEmisor><TelefonoEmisor>${telEm1}</TelefonoEmisor></TablaTelefonoEmisor>` : ""}
-    ${opt("CorreoEmisor", correoEm)}
-    ${opt("WebSite", webSite)}
-    ${opt("ActividadEconomica", actEcon)}
-    ${opt("CodigoVendedor", codVend)}
-    ${opt("NumeroFacturaInterna", noFactInt)}
-    ${opt("NumeroPedidoInterno", noPedido)}
-    ${opt("ZonaVenta", zonaVenta)}
-    ${opt("RutaVenta", rutaVenta)}
-    ${opt("InformacionAdicionalEmisor", infoEmis)}
-    <FechaEmision>${fechaEm}</FechaEmision>
-  </Emisor>`;
+  // ── Comprador ──────────────────────────────────────────────────────────────
+  const rncComp       = raw(row,"rnccomprador","rnc_comprador").replace(/\D/g,"");
+  const idExtran      = raw(row,"identificadorextranjero","identificador_extranjero");
+  const razonComp     = raw(row,"razonsocialcomprador","razon_social_comprador");
+  const contactoComp  = raw(row,"contactocomprador","contacto_comprador");
+  const correoComp    = raw(row,"correocomprador","correo_comprador");
+  const dirComp       = raw(row,"direccioncomprador","direccion_comprador");
+  const muniComp      = raw(row,"municipiocomprador","municipio_comprador");
+  const provComp      = raw(row,"provinciacomprador","provincia_comprador");
+  const fechaEnt      = fecha(row,"fechaentrega","fecha_entrega");
+  const contactoEnt   = raw(row,"contactoentrega","contacto_entrega");
+  const dirEnt        = raw(row,"direccionentrega","direccion_entrega");
+  const telAdi        = raw(row,"telefonoadicional","telefono_adicional");
+  const fechaOC       = fecha(row,"fechaordencompra","fecha_orden_compra");
+  const numOC         = raw(row,"numeroordencompra","numero_orden_compra");
+  const codIntComp    = raw(row,"codigointernocomprador","codigo_interno_comprador");
 
-  // ── Comprador ─────────────────────────────────────────────────────────────
-  // Orden XSD: RNC→Razon→Contacto→Correo→Direc→Municipio→Provincia→
-  //            FechaEntrega→ContactoEntrega→DirEntrega→TelAdicional→
-  //            FechaOrdenCompra→NumeroOrdenCompra→CodigoInterno
-  const rncComp      = raw(row,"rnccomprador","rnc_comprador").replace(/\D/g,"");
-  const razonComp    = esc(raw(row,"razonsocialcomprador","razon_social_comprador"));
-  const contactoComp = esc(raw(row,"contactocomprador","contacto_comprador"));
-  const correoComp   = esc(raw(row,"correocomprador","correo_comprador"));
-  const dirComp      = esc(raw(row,"direccioncomprador","direccion_comprador"));
-  const muniComp     = raw(row,"municipiocomprador","municipio_comprador");
-  const provComp     = raw(row,"provinciacomprador","provincia_comprador");
-  const fechaEntrega = fecha(row,"fechaentrega","fecha_entrega");
-  const contEntrega  = esc(raw(row,"contactoentrega","contacto_entrega"));
-  const dirEntrega   = esc(raw(row,"direccionentrega","direccion_entrega"));
-  const telAdicional = raw(row,"telefonoadicional","telefono_adicional");
-  const fechaOC      = fecha(row,"fechaordencompra","fecha_orden_compra");
-  const numOC        = raw(row,"numeroordencompra","numero_orden_compra");
-  const codIntComp   = raw(row,"codigointernocomprador","codigo_interno_comprador");
-  const idExt        = esc(raw(row,"identificadorextranjero","identificador_extranjero"));
+  const Comprador: Record<string,unknown> = {
+    ...(rncComp     ? { RNCComprador: rncComp }           : {}),
+    ...(idExtran    ? { IdentificadorExtranjero: idExtran } : {}),
+    ...(razonComp   ? { RazonSocialComprador: razonComp }  : {}),
+    ...(contactoComp? { ContactoComprador: contactoComp }  : {}),
+    ...(correoComp  ? { CorreoComprador: correoComp }      : {}),
+    ...(dirComp     ? { DireccionComprador: dirComp }      : {}),
+    ...(muniComp    ? { MunicipioComprador: muniComp }     : {}),
+    ...(provComp    ? { ProvinciaComprador: provComp }     : {}),
+    ...(fechaEnt    ? { FechaEntrega: fechaEnt }           : {}),
+    ...(contactoEnt ? { ContactoEntrega: contactoEnt }     : {}),
+    ...(dirEnt      ? { DireccionEntrega: dirEnt }         : {}),
+    ...(telAdi      ? { TelefonoAdicional: telAdi }        : {}),
+    ...(fechaOC     ? { FechaOrdenCompra: fechaOC }        : {}),
+    ...(numOC       ? { NumeroOrdenCompra: numOC }         : {}),
+    ...(codIntComp  ? { CodigoInternoComprador: codIntComp}: {}),
+  };
 
-  let compradorXml = "";
-  if (idExt && (tipo === "47" || (tipo === "46" && !rncComp))) {
-    // Extranjero — incluir todos los campos del comprador que tenga el Excel
-    compradorXml = `<Comprador>
-    <IdentificadorExtranjero>${idExt}</IdentificadorExtranjero>
-    <RazonSocialComprador>${razonComp || "BENEFICIARIO EXTERIOR"}</RazonSocialComprador>
-    ${opt("ContactoComprador", contactoComp)}
-    ${opt("CorreoComprador", correoComp)}
-    ${opt("DireccionComprador", dirComp)}
-    ${opt("MunicipioComprador", muniComp)}
-    ${opt("ProvinciaComprador", provComp)}
-    ${optDate("FechaEntrega", fechaEntrega)}
-    ${opt("ContactoEntrega", contEntrega)}
-    ${opt("DireccionEntrega", dirEntrega)}
-    ${opt("TelefonoAdicional", telAdicional)}
-    ${optDate("FechaOrdenCompra", fechaOC)}
-    ${opt("NumeroOrdenCompra", numOC)}
-    ${opt("CodigoInternoComprador", codIntComp)}
-  </Comprador>`;
-  } else if (rncComp || razonComp) {
-    compradorXml = `<Comprador>
-    ${rncComp ? `<RNCComprador>${rncComp}</RNCComprador>` : ""}
-    ${razonComp ? `<RazonSocialComprador>${razonComp}</RazonSocialComprador>` : ""}
-    ${opt("ContactoComprador", contactoComp)}
-    ${opt("CorreoComprador", correoComp)}
-    ${opt("DireccionComprador", dirComp)}
-    ${opt("MunicipioComprador", muniComp)}
-    ${opt("ProvinciaComprador", provComp)}
-    ${optDate("FechaEntrega", fechaEntrega)}
-    ${opt("ContactoEntrega", contEntrega)}
-    ${opt("DireccionEntrega", dirEntrega)}
-    ${opt("TelefonoAdicional", telAdicional)}
-    ${optDate("FechaOrdenCompra", fechaOC)}
-    ${opt("NumeroOrdenCompra", numOC)}
-    ${opt("CodigoInternoComprador", codIntComp)}
-  </Comprador>`;
-  }
-
-  // ── Totales ───────────────────────────────────────────────────────────────
-  // Orden XSD: GravTot→GravI1→GravI2→GravI3→Exento→ITBIS1(int)→ITBIS2→ITBIS3→
-  //            TotalITBIS→TotalITBIS1→TotalITBIS2→TotalITBIS3→
-  //            MontoTotal→MontoNoFacturable→MontoPeriodo→SaldoAnterior→
-  //            MontoAvancePago→ValorPagar→TotalITBISRetenido→TotalISRRetencion
-  const gravTot    = raw(row,"montogravadototal","monto_gravado_total");
-  const gravI1     = raw(row,"montogravadoi1","monto_gravado_i1","montogravado_i1","monto_gravadoi1");
-  const gravI2     = raw(row,"montogravadoi2","monto_gravado_i2","montogravado_i2","monto_gravadoi2");
-  const gravI3     = raw(row,"montogravadoi3","monto_gravado_i3","montogravado_i3","monto_gravadoi3");
-  const montoEx    = raw(row,"montoexento","monto_exento");
-  const itbis1     = rawNum(row,"itbis1");
-  const itbis2     = rawNum(row,"itbis2");
-  const itbis3     = rawNum(row,"itbis3");
-  const totItbis   = raw(row,"totalitbis","total_itbis");
-  const totItbis1  = raw(row,"totalitbis1","total_itbis1");
-  const totItbis2  = raw(row,"totalitbis2","total_itbis2");
-  const totItbis3  = raw(row,"totalitbis3","total_itbis3");
-  const montoTot   = raw(row,"montototal","monto_total") || "0";
-  const montoNF    = raw(row,"montonofacturable","monto_no_facturable");
+  // ── Totales ────────────────────────────────────────────────────────────────
+  const gravTot  = raw(row,"montogravadototal","monto_gravado_total");
+  const gravI1   = raw(row,"montogravadoi1","monto_gravado_i1","montogravado_i1","monto_gravadoi1");
+  const gravI2   = raw(row,"montogravadoi2","monto_gravado_i2","montogravado_i2","monto_gravadoi2");
+  const gravI3   = raw(row,"montogravadoi3","monto_gravado_i3","montogravado_i3","monto_gravadoi3");
+  const montoEx  = raw(row,"montoexento","monto_exento");
+  const itbis1   = rawNum(row,"itbis1");
+  const itbis2   = rawNum(row,"itbis2");
+  const itbis3   = rawNum(row,"itbis3");
+  const totItbis = raw(row,"totalitbis","total_itbis");
+  const totItb1  = raw(row,"totalitbis1","total_itbis1");
+  const totItb2  = raw(row,"totalitbis2","total_itbis2");
+  const totItb3  = raw(row,"totalitbis3","total_itbis3");
+  const montoTot = raw(row,"montototal","monto_total") || "0";
+  const montoNF  = raw(row,"montonofacturable","monto_no_facturable");
+  const montoPer = raw(row,"montoperiodo","monto_periodo");
+  const saldoAnt = raw(row,"saldoanterior","saldo_anterior");
+  const avancePag= raw(row,"montoavancepago","monto_avance_pago");
+  const valorPag = raw(row,"valorpagar","valor_pagar");
+  const itbisRet = raw(row,"totalitbisretenido","total_itbis_retenido");
+  const isrRet   = raw(row,"totalisrretencion","total_isr_retencion");
   const montoImpAd = raw(row,"montoimpuestoadicional","monto_impuesto_adicional","montoimpuesto_adicional","monto_impuestoadicional");
-  const montoPer   = raw(row,"montoperiodo","monto_periodo");
-  const saldoAnt   = raw(row,"saldoanterior","saldo_anterior");
-  const avancePag  = raw(row,"montoavancepago","monto_avance_pago");
-  const valorPag   = raw(row,"valorpagar","valor_pagar");
-  const itbisRet   = raw(row,"totalitbisretenido","total_itbis_retenido");
-  const isrRet     = raw(row,"totalisrretencion","total_isr_retencion");
 
-  let totalesXml = "";
+  let Totales: Record<string,unknown> = {};
+
   if (tipo === "43") {
-    totalesXml = `<Totales>
-    ${optNum2("MontoExento", montoEx || montoTot)}
-    ${optNum2("MontoImpuestoAdicional", montoImpAd)}
-    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-  </Totales>`;
+    Totales = {
+      ...(montoEx || montoTot ? { MontoExento: toNum(montoEx || montoTot) } : {}),
+      ...(montoImpAd ? { MontoImpuestoAdicional: toNum(montoImpAd) } : {}),
+      MontoTotal: toNum(montoTot),
+    };
   } else if (tipo === "44") {
-    // E44: régimen especial — solo exento + total
-    totalesXml = `<Totales>
-    ${optNum2("MontoExento", montoEx)}
-    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-    ${optNum2("MontoPeriodo", montoPer)}
-    ${optNum2("ValorPagar", valorPag)}
-  </Totales>`;
+    Totales = {
+      ...(montoEx  ? { MontoExento:   toNum(montoEx)  } : {}),
+      MontoTotal: toNum(montoTot),
+      ...(montoPer ? { MontoPeriodo:  toNum(montoPer) } : {}),
+      ...(valorPag ? { ValorPagar:    toNum(valorPag) } : {}),
+    };
   } else if (tipo === "46") {
-    // E46: exportaciones — usa MontoGravadoI3 con ITBIS3=0
-    totalesXml = `<Totales>
-    ${optNum2("MontoGravadoTotal", gravTot || gravI3)}
-    ${optNum2("MontoGravadoI1", gravI1)}
-    ${optNum2("MontoGravadoI2", gravI2)}
-    ${optNum2("MontoGravadoI3", gravI3)}
-    ${optNum2("MontoExento", montoEx)}
-    ${itbis1 !== "" ? `<ITBIS1>${fmtInt(itbis1)}</ITBIS1>` : ""}
-    ${itbis2 !== "" ? `<ITBIS2>${fmtInt(itbis2)}</ITBIS2>` : ""}
-    ${itbis3 !== "" ? `<ITBIS3>${fmtInt(itbis3)}</ITBIS3>` : ""}
-    ${optNum2("TotalITBIS", totItbis)}
-    ${optNum2("TotalITBIS1", totItbis1)}
-    ${optNum2("TotalITBIS2", totItbis2)}
-    ${optNum2("TotalITBIS3", totItbis3)}
-    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-    ${optNum2("MontoPeriodo", montoPer)}
-    ${optNum2("ValorPagar", valorPag)}
-  </Totales>`;
+    Totales = {
+      ...(gravTot || gravI3 ? { MontoGravadoTotal: toNum(gravTot || gravI3) } : {}),
+      ...(gravI1   ? { MontoGravadoI1:  toNum(gravI1)   } : {}),
+      ...(gravI2   ? { MontoGravadoI2:  toNum(gravI2)   } : {}),
+      ...(gravI3   ? { MontoGravadoI3:  toNum(gravI3)   } : {}),
+      ...(montoEx  ? { MontoExento:     toNum(montoEx)  } : {}),
+      ...(itbis1 !== "" ? { ITBIS1: toInt(itbis1) } : {}),
+      ...(itbis2 !== "" ? { ITBIS2: toInt(itbis2) } : {}),
+      ...(itbis3 !== "" ? { ITBIS3: toInt(itbis3) } : {}),
+      ...(totItbis ? { TotalITBIS:   toNum(totItbis) } : {}),
+      ...(totItb1  ? { TotalITBIS1:  toNum(totItb1)  } : {}),
+      ...(totItb2  ? { TotalITBIS2:  toNum(totItb2)  } : {}),
+      ...(totItb3  ? { TotalITBIS3:  toNum(totItb3)  } : {}),
+      MontoTotal: toNum(montoTot),
+      ...(montoPer ? { MontoPeriodo:  toNum(montoPer) } : {}),
+      ...(valorPag ? { ValorPagar:    toNum(valorPag) } : {}),
+    };
   } else if (tipo === "47") {
-    totalesXml = `<Totales>
-    ${optNum2("MontoExento", montoEx || montoTot)}
-    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-    ${optNum2("MontoPeriodo", montoPer)}
-    ${optNum2("ValorPagar", valorPag)}
-    ${optNum2("TotalISRRetencion", isrRet)}
-  </Totales>`;
+    Totales = {
+      ...(montoEx || montoTot ? { MontoExento: toNum(montoEx || montoTot) } : {}),
+      MontoTotal: toNum(montoTot),
+      ...(montoPer ? { MontoPeriodo:     toNum(montoPer) } : {}),
+      ...(valorPag ? { ValorPagar:       toNum(valorPag) } : {}),
+      ...(isrRet   ? { TotalISRRetencion: toNum(isrRet)  } : {}),
+    };
   } else {
-    totalesXml = `<Totales>
-    ${optNum2("MontoGravadoTotal", gravTot)}
-    ${optNum2("MontoGravadoI1", gravI1)}
-    ${optNum2("MontoGravadoI2", gravI2)}
-    ${optNum2("MontoGravadoI3", gravI3)}
-    ${optNum2("MontoExento", montoEx)}
-    ${itbis1 !== "" ? `<ITBIS1>${fmtInt(itbis1)}</ITBIS1>` : ""}
-    ${itbis2 !== "" ? `<ITBIS2>${fmtInt(itbis2)}</ITBIS2>` : ""}
-    ${itbis3 !== "" ? `<ITBIS3>${fmtInt(itbis3)}</ITBIS3>` : ""}
-    ${optNum2("TotalITBIS", totItbis)}
-    ${optNum2("TotalITBIS1", totItbis1)}
-    ${optNum2("TotalITBIS2", totItbis2)}
-    ${optNum2("TotalITBIS3", totItbis3)}
-    ${optNum2("MontoImpuestoAdicional", montoImpAd)}
-    <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-    ${optNum2("MontoNoFacturable", montoNF)}
-    ${optNum2("MontoPeriodo", montoPer)}
-    ${optNum2("SaldoAnterior", saldoAnt)}
-    ${optNum2("MontoAvancePago", avancePag)}
-    ${optNum2("ValorPagar", valorPag)}
-    ${optNum2("TotalITBISRetenido", itbisRet)}
-    ${optNum2("TotalISRRetencion", isrRet)}
-  </Totales>`;
+    // E31, E32, E33, E34, E41, E45 — bloque genérico
+    Totales = {
+      ...(gravTot  ? { MontoGravadoTotal: toNum(gravTot)  } : {}),
+      ...(gravI1   ? { MontoGravadoI1:    toNum(gravI1)   } : {}),
+      ...(gravI2   ? { MontoGravadoI2:    toNum(gravI2)   } : {}),
+      ...(gravI3   ? { MontoGravadoI3:    toNum(gravI3)   } : {}),
+      ...(montoEx  ? { MontoExento:       toNum(montoEx)  } : {}),
+      ...(itbis1 !== "" ? { ITBIS1: toInt(itbis1) } : {}),
+      ...(itbis2 !== "" ? { ITBIS2: toInt(itbis2) } : {}),
+      ...(itbis3 !== "" ? { ITBIS3: toInt(itbis3) } : {}),
+      ...(totItbis ? { TotalITBIS:   toNum(totItbis) } : {}),
+      ...(totItb1  ? { TotalITBIS1:  toNum(totItb1)  } : {}),
+      ...(totItb2  ? { TotalITBIS2:  toNum(totItb2)  } : {}),
+      ...(totItb3  ? { TotalITBIS3:  toNum(totItb3)  } : {}),
+      ...(montoImpAd ? { MontoImpuestoAdicional: toNum(montoImpAd) } : {}),
+      MontoTotal: toNum(montoTot),
+      ...(montoNF  ? { MontoNoFacturable: toNum(montoNF)  } : {}),
+      ...(montoPer ? { MontoPeriodo:      toNum(montoPer) } : {}),
+      ...(saldoAnt ? { SaldoAnterior:     toNum(saldoAnt) } : {}),
+      ...(avancePag? { MontoAvancePago:   toNum(avancePag)} : {}),
+      ...(valorPag ? { ValorPagar:        toNum(valorPag) } : {}),
+      ...(itbisRet ? { TotalITBISRetenido: toNum(itbisRet)} : {}),
+      ...(isrRet   ? { TotalISRRetencion:  toNum(isrRet)  } : {}),
+    };
   }
 
-  // ── Items ─────────────────────────────────────────────────────────────────
-  // Orden XSD: NumeroLinea→IndicadorFacturacion→Retencion→NombreItem→
-  //            IndicadorBienoServicio→DescripcionItem→CantidadItem→UnidadMedida→
-  //            FechaElaboracion→FechaVencimientoItem→PrecioUnitarioItem→
-  //            DescuentoMonto→TablaSubDescuento→MontoItem→ITBIS|Exento
-  const items: string[] = [];
+  // ── Items ──────────────────────────────────────────────────────────────────
+  const itemsList: Record<string,unknown>[] = [];
+
   for (let i = 1; i <= 62; i++) {
     const nom = raw(row, `nombreitem${i}`);
     if (!nom) break;
@@ -366,268 +305,224 @@ function buildXML(row: Record<string,unknown>, encf: string): string {
     const retISR  = raw(row, `montoisrretenido${i}`);
     const indAgen = rawNum(row, `indicadoragenteretencionopercepcion${i}`);
     const indBS   = rawNum(row, `indicadorbienoservicio${i}`) || "2";
-    const descItem = esc(raw(row, `descripcionitem${i}`));
+    const descItem= raw(row, `descripcionitem${i}`);
     const cant    = raw(row, `cantidaditem${i}`) || "1";
     const unidMed = raw(row, `unidadmedida${i}`);
-    const fechaElab = fecha(row, `fechaelaboracion${i}`);
-    const fechaVencI = fecha(row, `fechavencimientoitem${i}`);
-    const precio  = raw(row, `preciounitarioitem${i}`) || "0";
-    const descMonto = raw(row, `descuentomonto${i}`);
-    const mItem   = raw(row, `montoitem${i}`) || "0";
-    const itbItem = raw(row, `liquidacion${i}1`) || raw(row, `subtotaitbis${i}`);
-
-    let itemXml = `<Item>
-      <NumeroLinea>${i}</NumeroLinea>
-      <IndicadorFacturacion>${indFact}</IndicadorFacturacion>`;
-
-    // Retención para E41/E47
-    if (retITBI || retISR || (indAgen && ["41","47"].includes(tipo))) {
-      itemXml += `
-      <Retencion>
-        ${indAgen ? `<IndicadorAgenteRetencionoPercepcion>${indAgen}</IndicadorAgenteRetencionoPercepcion>` : ""}
-        ${optNum2("MontoITBISRetenido", retITBI)}
-        ${optNum2("MontoISRRetenido", retISR)}
-      </Retencion>`;
-    }
-
-    // Campos adicionales desde Excel (XSD order)
     const cantRef = raw(row, `cantidadreferencia${i}`);
     const unidRef = raw(row, `unidadreferencia${i}`);
     const gradAlc = raw(row, `gradosalcohol${i}`);
     const precRef = raw(row, `preciounitarioreferencia${i}`);
-    const recMon  = raw(row, `recargomonto${i}`);
+    const fechaElab  = fecha(row, `fechaelaboracion${i}`);
+    const fechaVencI = fecha(row, `fechavencimientoitem${i}`);
+    const precio  = raw(row, `preciounitarioitem${i}`) || "0";
+    const descMonto = raw(row, `descuentomonto${i}`);
     const tipoSD  = raw(row, `tiposubdescuento${i}`, `tipo_sub_descuento${i}`, `tiposubdescuento`);
     const pctSD   = raw(row, `subdescuentoporcentaje${i}`, `sub_descuento_porcentaje${i}`, `subdescuentoporcentaje`);
     const monSD   = raw(row, `montosubdescuento${i}`, `monto_sub_descuento${i}`, `montosubdescuento`);
+    const recMon  = raw(row, `recargomonto${i}`);
+    const mItem   = raw(row, `montoitem${i}`) || "0";
+    const itbItem = raw(row, `liquidacion${i}1`) || raw(row, `subtotaitbis${i}`);
 
-    itemXml += `
-      <NombreItem>${esc(nom.substring(0,80))}</NombreItem>
-      <IndicadorBienoServicio>${indBS}</IndicadorBienoServicio>
-      ${descItem ? `<DescripcionItem>${descItem}</DescripcionItem>` : ""}
-      <CantidadItem>${cant || "1"}</CantidadItem>
-      ${opt("UnidadMedida", unidMed)}
-      ${cantRef ? `<CantidadReferencia>${cantRef}</CantidadReferencia>` : ""}
-      ${opt("UnidadReferencia", unidRef)}
-      ${gradAlc ? `<GradosAlcohol>${gradAlc}</GradosAlcohol>` : ""}
-      ${precRef ? `<PrecioUnitarioReferencia>${precRef}</PrecioUnitarioReferencia>` : ""}
-      ${optDate("FechaElaboracion", fechaElab)}
-      ${optDate("FechaVencimientoItem", fechaVencI)}
-      <PrecioUnitarioItem>${precio || "0"}</PrecioUnitarioItem>
-      ${descMonto && !tipoSD ? `<DescuentoMonto>${fmt2(descMonto)}</DescuentoMonto>` : ""}
-      ${tipoSD ? `<TablaSubDescuento><SubDescuento><TipoSubDescuento>${tipoSD}</TipoSubDescuento>${pctSD ? `<SubDescuentoPorcentaje>${pctSD}</SubDescuentoPorcentaje>` : ""}<MontoSubDescuento>${fmt2(monSD)}</MontoSubDescuento></SubDescuento></TablaSubDescuento>` : ""}
-      ${recMon ? `<RecargoMonto>${fmt2(recMon)}</RecargoMonto>` : ""}
-      <MontoItem>${fmt2(mItem)}</MontoItem>`;
+    const item: Record<string,unknown> = {
+      NumeroLinea: i,
+      IndicadorFacturacion: indFact,
+    };
 
-    // ITBIS del ítem o Exento
-    if (itbItem) {
-      itemXml += `\n      <ITBIS>${fmt2(itbItem)}</ITBIS>`;
+    // Retención E41/E47
+    if (retITBI || retISR || (indAgen && ["41","47"].includes(tipo))) {
+      const ret: Record<string,unknown> = {};
+      if (indAgen) ret.IndicadorAgenteRetencionoPercepcion = indAgen;
+      if (retITBI) ret.MontoITBISRetenido = toNum(retITBI);
+      if (retISR)  ret.MontoISRRetenido   = toNum(retISR);
+      item.Retencion = ret;
     }
 
-    itemXml += `\n    </Item>`;
-    items.push(itemXml);
+    item.NombreItem            = nom.substring(0, 80);
+    item.IndicadorBienoServicio= indBS;
+    if (descItem) item.DescripcionItem = descItem;
+    item.CantidadItem = cant;
+    if (unidMed) item.UnidadMedida = unidMed;
+    if (cantRef) item.CantidadReferencia = cantRef;
+    if (unidRef) item.UnidadReferencia   = unidRef;
+    if (gradAlc) item.GradosAlcohol      = gradAlc;
+    if (precRef) item.PrecioUnitarioReferencia = precRef;
+    if (fechaElab)  item.FechaElaboracion     = fechaElab;
+    if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
+    item.PrecioUnitarioItem = precio;
+
+    // Descuento: DescuentoMonto directo O TablaSubDescuento (mutuamente excluyentes)
+    if (tipoSD) {
+      const sub: Record<string,unknown> = { TipoSubDescuento: tipoSD };
+      if (pctSD) sub.SubDescuentoPorcentaje = toNum(pctSD);
+      if (monSD) sub.MontoSubDescuento       = toNum(monSD);
+      item.TablaSubDescuento = { SubDescuento: sub };
+    } else if (descMonto) {
+      item.DescuentoMonto = toNum(descMonto);
+    }
+
+    if (recMon) item.RecargoMonto = toNum(recMon);
+    item.MontoItem = toNum(mItem);
+    if (itbItem) item.ITBIS = toNum(itbItem);
+
+    itemsList.push(item);
   }
 
   // Fallback si el Excel no tiene ítems detallados
-  if (items.length === 0) {
-    const mBase = gravI1 || gravTot || montoTot || "0";
-    items.push(`<Item>
-      <NumeroLinea>1</NumeroLinea>
-      <IndicadorFacturacion>1</IndicadorFacturacion>
-      <NombreItem>Servicio</NombreItem>
-      <IndicadorBienoServicio>2</IndicadorBienoServicio>
-      <CantidadItem>1</CantidadItem>
-      <PrecioUnitarioItem>${fmt2(mBase)}</PrecioUnitarioItem>
-      <MontoItem>${fmt2(mBase)}</MontoItem>
-    </Item>`);
+  if (itemsList.length === 0) {
+    const mBase = toNum(gravI1 || gravTot || montoTot || "0") ?? 0;
+    itemsList.push({
+      NumeroLinea: 1,
+      IndicadorFacturacion: "1",
+      NombreItem: "Servicio",
+      IndicadorBienoServicio: "2",
+      CantidadItem: 1,
+      PrecioUnitarioItem: mBase,
+      MontoItem: mBase,
+    });
   }
 
-  // ── InformacionReferencia (E33, E34) ──────────────────────────────────────
+  // ── InformacionReferencia (E33, E34) ───────────────────────────────────────
   const ncfMod   = raw(row,"ncfmodificado","ncf_modificado");
   const fechaMod = fecha(row,"fechancfmodificado","fecha_ncf_modificado");
   const codMod   = raw(row,"codigomodificacion","codigo_modificacion") || "2";
-  const razMod   = esc(raw(row,"razonmodificacion","razon_modificacion"));
-  const infoRef  = (["33","34"].includes(tipo) && ncfMod)
-    ? `<InformacionReferencia>
-    <NCFModificado>${ncfMod}</NCFModificado>
-    <FechaNCFModificado>${fechaMod || fechaEm}</FechaNCFModificado>
-    <CodigoModificacion>${codMod}</CodigoModificacion>
-    ${opt("RazonModificacion", razMod)}
-  </InformacionReferencia>`
-    : "";
+  const razMod   = raw(row,"razonmodificacion","razon_modificacion");
 
-  // FechaHoraFirma: DD-MM-YYYY HH:MM:SS en hora local (24h, sin AM/PM)
-  const _now = new Date();
-  const _pad = (n: number) => String(n).padStart(2,"0");
-  const fechaHoraFirma =
-    `${_pad(_now.getDate())}-${_pad(_now.getMonth()+1)}-${_now.getFullYear()} ` +
-    `${_pad(_now.getHours())}:${_pad(_now.getMinutes())}:${_pad(_now.getSeconds())}`;
+  // ── FechaHoraFirma ─────────────────────────────────────────────────────────
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2,"0");
+  const FechaHoraFirma =
+    `${pad(now.getDate())}-${pad(now.getMonth()+1)}-${now.getFullYear()} ` +
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<ECF>
-  <Encabezado>
-    <Version>1.0</Version>
-    ${idDocXml}
-    ${emisorXml}
-    ${compradorXml}
-    ${totalesXml}
-  </Encabezado>
-  <DetallesItems>
-    ${items.join("\n    ")}
-  </DetallesItems>
-  ${infoRef}
-  <FechaHoraFirma>${fechaHoraFirma}</FechaHoraFirma>
-</ECF>`;
+  // ── Ensamblar JSON final ───────────────────────────────────────────────────
+  const json: Record<string,unknown> = {
+    ECF: {
+      Encabezado: {
+        Version: "1.0",
+        IdDoc,
+        Emisor,
+        ...(Object.keys(Comprador).length > 0 ? { Comprador } : {}),
+        Totales,
+      },
+      DetallesItems: {
+        Item: itemsList.length === 1 ? itemsList[0] : itemsList,
+      },
+      ...((["33","34"].includes(tipo) && ncfMod) ? {
+        InformacionReferencia: {
+          NCFModificado: ncfMod,
+          FechaNCFModificado: fechaMod || fmtFecha(raw(row,"fechaemision","fecha_emision")),
+          CodigoModificacion: codMod,
+          ...(razMod ? { RazonModificacion: razMod } : {}),
+        }
+      } : {}),
+      FechaHoraFirma,
+    },
+  };
+
+  return json;
 }
 
-// ── RFCE — Resumen Factura Consumo < RD$250,000 ───────────────────────────────
-// XSD RFCE: IdDoc(TipoeCF→eNCF→TipoIngresos→TipoPago) — NO FechaVencimientoSecuencia
-function buildRFCE(row: Record<string,unknown>, encf: string): string {
-  const tipo     = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
-  const rncEm    = raw(row,"rncemisor","rnc_emisor").replace(/\D/g,"") || "131217656";
-  const razonEm  = esc(raw(row,"razonsocialemisor","razon_social_emisor"));
-  const fechaEm  = fmtFecha(raw(row,"fechaemision","fecha_emision"));
-  const tipoPago = raw(row,"tipopago","tipo_pago") || "1";
-  const tipoIngr = raw(row,"tipoingresos","tipo_ingresos") || "01";
-  const rncComp  = raw(row,"rnccomprador","rnc_comprador").replace(/\D/g,"");
-  const razonComp = esc(raw(row,"razonsocialcomprador","razon_social_comprador"));
-
-  const gravTot   = raw(row,"montogravadototal","monto_gravado_total");
-  const gravI1    = raw(row,"montogravadoi1","monto_gravado_i1");
-  const gravI2    = raw(row,"montogravadoi2","monto_gravado_i2");
-  const montoEx   = raw(row,"montoexento","monto_exento");
-  const totItbis  = raw(row,"totalitbis","total_itbis");
-  const totItbis1 = raw(row,"totalitbis1","total_itbis1");
-  const totItbis2 = raw(row,"totalitbis2","total_itbis2");
-  const montoTot  = raw(row,"montototal","monto_total") || "0";
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<RFCE>
-  <Encabezado>
-    <Version>1.0</Version>
-    <IdDoc>
-      <TipoeCF>${tipo}</TipoeCF>
-      <eNCF>${encf}</eNCF>
-      <TipoIngresos>${tipoIngr}</TipoIngresos>
-      ${tipoPago ? `<TipoPago>${tipoPago}</TipoPago>` : ""}
-    </IdDoc>
-    <Emisor>
-      <RNCEmisor>${rncEm}</RNCEmisor>
-      <RazonSocialEmisor>${razonEm}</RazonSocialEmisor>
-      <FechaEmision>${fechaEm}</FechaEmision>
-    </Emisor>
-    <Comprador>
-      ${rncComp ? `<RNCComprador>${rncComp}</RNCComprador>` : ""}
-      <RazonSocialComprador>${razonComp || "CONSUMIDOR FINAL"}</RazonSocialComprador>
-    </Comprador>
-    <Totales>
-      ${optNum2("MontoGravadoTotal", gravTot)}
-      ${optNum2("MontoGravadoI1", gravI1)}
-      ${optNum2("MontoGravadoI2", gravI2)}
-      ${optNum2("MontoExento", montoEx)}
-      ${optNum2("TotalITBIS", totItbis)}
-      ${optNum2("TotalITBIS1", totItbis1)}
-      ${optNum2("TotalITBIS2", totItbis2)}
-      <MontoTotal>${fmt2(montoTot)}</MontoTotal>
-    </Totales>
-    <CodigoSeguridadeCF>${encf.slice(-6)}</CodigoSeguridadeCF>
-  </Encabezado>
-</RFCE>`;
-}
-
-// ── Handler principal ─────────────────────────────────────────────────────────
+// ── POST Handler ───────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   try {
-    if (!await verificarSesion(req))
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    const ok = await verificarSesion(req);
+    if (!ok) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    const body = await req.json();
-    const encf  = String(body.encf ?? body.eNCF ?? "").trim().toUpperCase();
+    const { encf, token: tokenExterno } = await req.json();
     if (!encf) return NextResponse.json({ error: "encf requerido" }, { status: 400 });
 
-    const rows = await getAllRowsFromStorage();
-    if (rows.length === 0)
-      return NextResponse.json({ error: "No hay Excel cargado." }, { status: 404 });
+    // Leer fila del Excel
+    const rows = await getAllRowsFromStorage() as Record<string,unknown>[];
+    const row  = rows.find(r => {
+      const v = String(r["encf"] ?? r["eNCF"] ?? r["e-NCF"] ?? "").trim().toUpperCase();
+      return v === encf.toUpperCase();
+    });
+    if (!row) return NextResponse.json({ error: `eNCF no encontrado: ${encf}` }, { status: 404 });
 
-    const row = buscarFila(rows, encf);
-    if (!row)
-      return NextResponse.json({ error: `eNCF ${encf} no encontrado en el Excel` }, { status: 404 });
+    // Certificado y clases de la librería
+    const certs     = getCerts();
+    const ecfClient = new ECF(certs, getEnv());
+    const signature = new Signature(certs.key, certs.cert);
 
-    const esRFCE = ENCFS_RFCE.has(encf);
-
-    // Guardar XML para inspección manual en /tmp/ecf-debug/
-    const debugDir = "/tmp/ecf-debug";
-    try { fs.mkdirSync(debugDir, { recursive: true }); } catch {}
-
-    if (esRFCE) {
-      const rfceXml     = buildRFCE(row, encf);
-      // Guardar XML sin firmar
-      try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), rfceXml, "utf8"); } catch {}
-      const rfceFirmado = await firmarXML(rfceXml);
-      // Guardar XML firmado
-      try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), rfceFirmado, "utf8"); } catch {}
-      const resultado   = await enviarRFCE(rfceFirmado, undefined, encf);
-      return NextResponse.json({
-        success:     true, encf,
-        trackId:     resultado.trackId,
-        estadoDGII:  resultado.estado || "Enviado",
-        esMenor250k: true,
-        xmlGenerado: rfceFirmado,
-      });
+    // Autenticar (o usar token de Firestore ya guardado)
+    if (!tokenExterno) {
+      // Intentar token de Firestore primero
+      try {
+        const { adminDb } = await import("@/lib/firebase-admin");
+        const snap = await adminDb.collection("config").doc("dgii_token").get();
+        if (snap.exists) {
+          const data = snap.data() as { token: string; expira: string };
+          const expira = new Date(data.expira);
+          if (expira.getTime() - Date.now() > 5 * 60 * 1000) {
+            // Token válido — inyectarlo en la librería
+            const { setAuthToken } = await import("dgii-ecf");
+            setAuthToken(data.token);
+          } else {
+            await ecfClient.authenticate();
+          }
+        } else {
+          await ecfClient.authenticate();
+        }
+      } catch {
+        await ecfClient.authenticate();
+      }
     }
 
-    const xml     = buildXML(row, encf);
-    // Guardar XML sin firmar
-    try { fs.writeFileSync(path.join(debugDir, `${encf}_unsigned.xml`), xml, "utf8"); } catch {}
-    const firmado = await firmarXML(xml);
-    // Guardar XML firmado
-    try { fs.writeFileSync(path.join(debugDir, `${encf}_signed.xml`), firmado, "utf8"); } catch {}
-    const trackId = await enviarECF(firmado, undefined, encf);
+    const fileName = `${RNC_EMISOR}${encf}.xml`;
+    const esRFCE   = ENCFS_RFCE.has(encf.toUpperCase());
 
-    return NextResponse.json({
-      success:     true, encf, trackId,
-      estadoDGII:  "Enviado",
-      esMenor250k: false,
-      xmlGenerado: firmado,
-    });
+    if (esRFCE) {
+      // ── RFCE: E32 < RD$250k ───────────────────────────────────────────────
+      // 1. Construir y firmar el ECF32 completo
+      const json      = buildJsonECF(row, encf);
+      const { Transformer } = await import("dgii-ecf");
+      const transformer     = new Transformer();
+      const xml             = transformer.json2xml(json);
+      const signedEcf       = signature.signXml(xml, "ECF");
+
+      // 2. Convertir ECF32 → RFCE (la librería añade CodigoSeguridadeCF)
+      const { xml: rfceXml } = convertECF32ToRFCE(signedEcf);
+
+      // 3. Firmar el RFCE
+      const signedRFCE = signature.signXml(rfceXml, "RFCE");
+
+      // 4. Enviar
+      const resultado  = await ecfClient.sendSummary(signedRFCE, fileName);
+
+      // Debug opcional
+      try {
+        const fs2 = await import("fs"); const p = await import("path");
+        fs2.mkdirSync("/tmp/ecf-debug", { recursive: true });
+        fs2.writeFileSync(p.join("/tmp/ecf-debug", `${encf}_signed.xml`), signedRFCE);
+      } catch { /* no critical */ }
+
+      console.log(`[cert/enviar] RFCE ${encf}:`, JSON.stringify(resultado));
+      return NextResponse.json({ success: true, encf, resultado });
+
+    } else {
+      // ── ECF normal ────────────────────────────────────────────────────────
+      const json = buildJsonECF(row, encf);
+      const { Transformer } = await import("dgii-ecf");
+      const transformer     = new Transformer();
+      const xml             = transformer.json2xml(json);
+      const signedXml       = signature.signXml(xml, "ECF");
+
+      // Debug opcional
+      try {
+        const fs2 = await import("fs"); const p = await import("path");
+        fs2.mkdirSync("/tmp/ecf-debug", { recursive: true });
+        fs2.writeFileSync(p.join("/tmp/ecf-debug", `${encf}_signed.xml`), signedXml);
+      } catch { /* no critical */ }
+
+      const resultado = await ecfClient.sendElectronicDocument(signedXml, fileName);
+
+      console.log(`[cert/enviar] ECF ${encf}:`, JSON.stringify(resultado));
+      return NextResponse.json({ success: true, encf, resultado });
+    }
 
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Error desconocido";
     console.error("[cert/enviar]", msg);
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
-}
-
-// ── GET: listar o leer XMLs de debug ─────────────────────────────────────────
-export async function GET(req: NextRequest) {
-  try {
-    if (!await verificarSesion(req))
-      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-
-    const { searchParams } = new URL(req.url);
-    const file = searchParams.get("file");
-    const debugDir = "/tmp/ecf-debug";
-
-    if (file) {
-      // Leer un archivo específico
-      const safeName = path.basename(file); // seguridad: solo nombre de archivo
-      const filePath = path.join(debugDir, safeName);
-      try {
-        const content = fs.readFileSync(filePath, "utf8");
-        return new Response(content, { headers: { "Content-Type": "application/xml" } });
-      } catch {
-        return NextResponse.json({ error: `Archivo ${safeName} no encontrado` }, { status: 404 });
-      }
-    }
-
-    // Listar archivos disponibles
-    try {
-      const files = fs.readdirSync(debugDir).sort();
-      return NextResponse.json({ files, dir: debugDir });
-    } catch {
-      return NextResponse.json({ files: [], dir: debugDir, msg: "Sin XMLs generados aún" });
-    }
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
