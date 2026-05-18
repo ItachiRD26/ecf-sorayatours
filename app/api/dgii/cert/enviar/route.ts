@@ -238,7 +238,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const adval   = raw(row, `montoimpuestoselectivoconsumoadvalorem${k}`);
     const otros   = raw(row, `otrosimpuestosadicionales${k}`);
     const imp: Record<string,unknown> = { TipoImpuesto: tipoImp };
-    if (tasa)  imp.Tasa = toNum(tasa);
+    if (tasa)  imp.TasaImpuestoAdicional = toNum(tasa);
     if (espec) imp.MontoImpuestoSelectivoConsumoEspecifico = toNum(espec);
     if (adval) imp.MontoImpuestoSelectivoConsumoAdvalorem  = toNum(adval);
     if (otros) imp.OtrosImpuestosAdicionales               = toNum(otros);
@@ -337,7 +337,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const fechaElab  = fecha(row, `fechaelaboracion${i}`);
     const fechaVencI = fecha(row, `fechavencimientoitem${i}`);
     const precio  = raw(row, `preciounitarioitem${i}`) || "0";
-    const descMonto = raw(row, `descuentomonto${i}`);
+    const descMonto = raw(row, `descuentomonto${i}`, `montodescuento${i}`, `monto_descuento${i}`);
     // TablaSubDescuento: columnas son tiposubdescuento{item}{sub} e.g. tiposubdescuento11, tiposubdescuento12...
     // Construir array de hasta 5 sub-descuentos
     const subDescs: Array<{tipo:string; pct?:string; mon?:string}> = [];
@@ -380,8 +380,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
     item.PrecioUnitarioItem = precio;
 
-    // Descuento: TablaSubDescuento tiene prioridad sobre DescuentoMonto (mutuamente excluyentes)
-    if (subDescs.length > 0) {
+    // Descuento: DescuentoMonto tiene prioridad (DGII valida este campo primero)
+    // TablaSubDescuento solo cuando NO hay descuentomonto directo (solo porcentajes)
+    if (descMonto) {
+      item.DescuentoMonto = toNum(descMonto);
+    } else if (subDescs.length > 0) {
       const subsArr = subDescs.map(s => {
         const sub: Record<string,unknown> = { TipoSubDescuento: s.tipo };
         if (s.pct) sub.SubDescuentoPorcentaje = toNum(s.pct);
@@ -389,8 +392,6 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         return sub;
       });
       item.TablaSubDescuento = { SubDescuento: subsArr.length === 1 ? subsArr[0] : subsArr };
-    } else if (descMonto) {
-      item.DescuentoMonto = toNum(descMonto);
     }
 
     if (recMon) item.RecargoMonto = toNum(recMon);
