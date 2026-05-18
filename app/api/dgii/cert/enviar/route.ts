@@ -226,6 +226,25 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
   const isrRet   = raw(row,"totalisrretencion","total_isr_retencion");
   const montoImpAd = raw(row,"montoimpuestoadicional","monto_impuesto_adicional","montoimpuesto_adicional","monto_impuestoadicional");
 
+  // ImpuestosAdicionales (E31 con ISC alcohol/tabaco etc.)
+  // Columnas: tipoimpuesto{k}, tasaimpuestoadicional{k}, montoimpuestoselectivoconsumoespecifico{k},
+  //           montoimpuestoselectivoconsumoadvalorem{k}, otrosimpuestosadicionales{k}
+  const impAdicArr: Record<string,unknown>[] = [];
+  for (let k = 1; k <= 4; k++) {
+    const tipoImp = raw(row, `tipoimpuesto${k}`);
+    if (!tipoImp) break;
+    const tasa    = raw(row, `tasaimpuestoadicional${k}`);
+    const espec   = raw(row, `montoimpuestoselectivoconsumoespecifico${k}`);
+    const adval   = raw(row, `montoimpuestoselectivoconsumoadvalorem${k}`);
+    const otros   = raw(row, `otrosimpuestosadicionales${k}`);
+    const imp: Record<string,unknown> = { TipoImpuesto: tipoImp };
+    if (tasa)  imp.Tasa = toNum(tasa);
+    if (espec) imp.MontoImpuestoSelectivoConsumoEspecifico = toNum(espec);
+    if (adval) imp.MontoImpuestoSelectivoConsumoAdvalorem  = toNum(adval);
+    if (otros) imp.OtrosImpuestosAdicionales               = toNum(otros);
+    impAdicArr.push(imp);
+  }
+
   let Totales: Record<string,unknown> = {};
 
   if (tipo === "43") {
@@ -255,6 +274,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
       ...(totItb1  ? { TotalITBIS1:  toNum(totItb1)  } : {}),
       ...(totItb2  ? { TotalITBIS2:  toNum(totItb2)  } : {}),
       ...(totItb3  ? { TotalITBIS3:  toNum(totItb3)  } : {}),
+      ...(impAdicArr.length > 0 ? { ImpuestosAdicionales: { ImpuestoAdicional: impAdicArr.length === 1 ? impAdicArr[0] : impAdicArr } } : {}),
       MontoTotal: toNum(montoTot),
       ...(montoPer ? { MontoPeriodo:  toNum(montoPer) } : {}),
       ...(valorPag ? { ValorPagar:    toNum(valorPag) } : {}),
@@ -283,6 +303,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
       ...(totItb2  ? { TotalITBIS2:  toNum(totItb2)  } : {}),
       ...(totItb3  ? { TotalITBIS3:  toNum(totItb3)  } : {}),
       ...(montoImpAd ? { MontoImpuestoAdicional: toNum(montoImpAd) } : {}),
+      ...(impAdicArr.length > 0 ? { ImpuestosAdicionales: { ImpuestoAdicional: impAdicArr.length === 1 ? impAdicArr[0] : impAdicArr } } : {}),
       MontoTotal: toNum(montoTot),
       ...(montoNF  ? { MontoNoFacturable: toNum(montoNF)  } : {}),
       ...(montoPer ? { MontoPeriodo:      toNum(montoPer) } : {}),
@@ -317,9 +338,17 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const fechaVencI = fecha(row, `fechavencimientoitem${i}`);
     const precio  = raw(row, `preciounitarioitem${i}`) || "0";
     const descMonto = raw(row, `descuentomonto${i}`);
-    const tipoSD  = raw(row, `tiposubdescuento${i}`, `tipo_sub_descuento${i}`, `tiposubdescuento`);
-    const pctSD   = raw(row, `subdescuentoporcentaje${i}`, `sub_descuento_porcentaje${i}`, `subdescuentoporcentaje`);
-    const monSD   = raw(row, `montosubdescuento${i}`, `monto_sub_descuento${i}`, `montosubdescuento`);
+    // TablaSubDescuento: columnas son tiposubdescuento{item}{sub} e.g. tiposubdescuento11, tiposubdescuento12...
+    // Construir array de hasta 5 sub-descuentos
+    const subDescs: Array<{tipo:string; pct?:string; mon?:string}> = [];
+    for (let j = 1; j <= 5; j++) {
+      const tipoJ = raw(row, `tiposubdescuento${i}${j}`);
+      if (!tipoJ) break;
+      const pctJ  = raw(row, `subdescuentoporcentaje${i}${j}`);
+      const monJ  = raw(row, `montosubdescuento${i}${j}`);
+      subDescs.push({ tipo: tipoJ, pct: pctJ || undefined, mon: monJ || undefined });
+    }
+    const tipoSD = subDescs.length > 0 ? subDescs[0].tipo : "";
     const recMon  = raw(row, `recargomonto${i}`);
     const mItem   = raw(row, `montoitem${i}`) || "0";
     const itbItem = raw(row, `liquidacion${i}1`) || raw(row, `subtotaitbis${i}`);
@@ -351,12 +380,15 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
     item.PrecioUnitarioItem = precio;
 
-    // Descuento: DescuentoMonto directo O TablaSubDescuento (mutuamente excluyentes)
-    if (tipoSD) {
-      const sub: Record<string,unknown> = { TipoSubDescuento: tipoSD };
-      if (pctSD) sub.SubDescuentoPorcentaje = toNum(pctSD);
-      if (monSD) sub.MontoSubDescuento       = toNum(monSD);
-      item.TablaSubDescuento = { SubDescuento: sub };
+    // Descuento: TablaSubDescuento tiene prioridad sobre DescuentoMonto (mutuamente excluyentes)
+    if (subDescs.length > 0) {
+      const subsArr = subDescs.map(s => {
+        const sub: Record<string,unknown> = { TipoSubDescuento: s.tipo };
+        if (s.pct) sub.SubDescuentoPorcentaje = toNum(s.pct);
+        if (s.mon) sub.MontoSubDescuento       = toNum(s.mon);
+        return sub;
+      });
+      item.TablaSubDescuento = { SubDescuento: subsArr.length === 1 ? subsArr[0] : subsArr };
     } else if (descMonto) {
       item.DescuentoMonto = toNum(descMonto);
     }
@@ -364,6 +396,16 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (recMon) item.RecargoMonto = toNum(recMon);
     item.MontoItem = toNum(mItem);
     if (itbItem) item.ITBIS = toNum(itbItem);
+
+    // TipoImpuesto por item (ISC: tipoimpuesto{i}1, tipoimpuesto{i}2...)
+    const tiposImpItem: string[] = [];
+    for (let j = 1; j <= 4; j++) {
+      const tImp = raw(row, `tipoimpuesto${i}${j}`);
+      if (tImp) tiposImpItem.push(tImp);
+      else break;
+    }
+    if (tiposImpItem.length === 1) item.TipoImpuesto = tiposImpItem[0];
+    else if (tiposImpItem.length > 1) item.TipoImpuesto = tiposImpItem;
 
     itemsList.push(item);
   }
