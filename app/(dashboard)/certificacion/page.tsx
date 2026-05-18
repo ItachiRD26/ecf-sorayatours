@@ -118,7 +118,7 @@ export default function CertificacionPage() {
   };
 
   // ── Enviar UN comprobante ────────────────────────────────────────────────
-  const enviarUno = async (encf: string): Promise<boolean> => {
+  const enviarUno = async (encf: string): Promise<string | null> => {
     setEstado(encf, "enviando");
     try {
       const res  = await fetch("/api/dgii/cert/enviar", {
@@ -129,17 +129,45 @@ export default function CertificacionPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setEstado(encf, "ok");
-      if (data.trackId) setTrack(encf, data.trackId);
+      // Extraer trackId del resultado (puede venir en data.trackId o data.resultado.trackId)
+      const tId = data.trackId ?? data.resultado?.trackId ?? null;
+      if (tId) setTrack(encf, tId);
       push({ tipo: "success", mensaje: `${encf} → ${data.estadoDGII || "Enviado"} ✓` });
-      return true;
+      return tId;
     } catch (e: unknown) {
       setEstado(encf, "error");
       push({ tipo: "error", mensaje: `${encf}: ${e instanceof Error ? e.message : "Error"}` });
-      return false;
+      return null;
     }
   };
 
+  // ── Esperar que DGII acepte un eNCF (consultar estado) ─────────────────
+  const esperarAceptado = async (trackId: string, encf: string, maxSegundos = 60): Promise<boolean> => {
+    const inicio = Date.now();
+    while (Date.now() - inicio < maxSegundos * 1000) {
+      await new Promise(r => setTimeout(r, 4000));
+      try {
+        const res  = await fetch(`/api/dgii/cert/consultar-trackid?trackId=${trackId}`);
+        const data = await res.json();
+        const est  = (data.estado ?? "").toLowerCase();
+        if (est.includes("aceptad")) {
+          push({ tipo: "success", mensaje: `${encf} confirmado ✅ (${data.estado})` });
+          return true;
+        }
+        if (est.includes("rechazad")) {
+          push({ tipo: "error", mensaje: `${encf} RECHAZADO: ${(data.mensajes ?? []).join(", ")}` });
+          return false;
+        }
+        push({ tipo: "warning", mensaje: `${encf} esperando… (${data.estado})` });
+      } catch { /* continuar esperando */ }
+    }
+    push({ tipo: "warning", mensaje: `${encf}: tiempo de espera agotado, continuando…` });
+    return false;
+  };
+
   // ── Enviar todos en orden ────────────────────────────────────────────────
+  const GRUPO2_GATE = "E320000000006"; // E33/E34 requieren este eNCF aceptado antes
+
   const enviarTodos = async () => {
     if (!tokenValido) {
       push({ tipo: "warning", mensaje: "Obtén el token primero (Pasos 1-3)." });
@@ -147,12 +175,50 @@ export default function CertificacionPage() {
     }
     setEnviandoTodo(true);
     let ok = 0;
-    for (const { encf } of SET_ENCFS) {
-      if (estados[encf] === "ok") continue; // ya enviado
-      const result = await enviarUno(encf);
-      if (result) ok++;
-      await new Promise(r => setTimeout(r, 1500)); // pausa entre envíos
+
+    // Separar grupos
+    const grupo1 = SET_ENCFS.filter(e => !["E330000000001","E340000000001","E340000000016"].includes(e.encf) && !e.esRFCE);
+    const grupo2 = SET_ENCFS.filter(e => ["E330000000001","E340000000001","E340000000016"].includes(e.encf));
+    const grupo3 = SET_ENCFS.filter(e => e.esRFCE);
+
+    // Enviar Grupo 1 — capturar trackId del gate (E320000000006)
+    let trackGate = "";
+    for (const { encf } of grupo1) {
+      if (estados[encf] === "ok") { if (encf === GRUPO2_GATE && trackIds[encf]) trackGate = trackIds[encf]; continue; }
+      const tId = await enviarUno(encf);
+      if (tId !== null) { ok++; if (encf === GRUPO2_GATE) trackGate = tId; }
+      await new Promise(r => setTimeout(r, 1200));
     }
+
+    // Esperar que E320000000006 sea aceptado antes del Grupo 2
+    if (grupo2.some(e => estados[e.encf] !== "ok")) {
+      push({ tipo: "warning", mensaje: "Esperando aceptación de E320000000006 antes de enviar notas…" });
+      const tId = trackGate || trackIds[GRUPO2_GATE];
+      if (tId) {
+        const aceptado = await esperarAceptado(tId, GRUPO2_GATE, 90);
+        if (!aceptado) push({ tipo: "warning", mensaje: "E320000000006 no confirmado aún — enviando notas de todas formas" });
+      } else {
+        push({ tipo: "warning", mensaje: "Sin trackId para E320000000006 — esperando 30s" });
+        await new Promise(r => setTimeout(r, 30000));
+      }
+    }
+
+    // Enviar Grupo 2 (E33/E34)
+    for (const { encf } of grupo2) {
+      if (estados[encf] === "ok") continue;
+      const tId = await enviarUno(encf);
+      if (tId !== null) ok++;
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
+    // Enviar Grupo 3 (RFCE)
+    for (const { encf } of grupo3) {
+      if (estados[encf] === "ok") continue;
+      const tId = await enviarUno(encf);
+      if (tId !== null) ok++;
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
     setEnviandoTodo(false);
     push({ tipo: "success", mensaje: `Envío completado. ${ok} enviados.` });
   };

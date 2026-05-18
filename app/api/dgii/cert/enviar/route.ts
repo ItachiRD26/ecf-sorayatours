@@ -315,12 +315,35 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     };
   }
 
+  // ── TablaDescuentoRecargo global (descuentos/recargos que afectan totales) ─
+  const ajustesGlobales: Record<string,unknown>[] = [];
+  for (let n = 1; n <= 5; n++) {
+    const descAj = raw(row, `descripciondescuentoorecargo${n}`);
+    if (!descAj) break;
+    const tipoAj = raw(row, `tipoajuste${n}`);
+    const tipVal = raw(row, `tipovalor${n}`);
+    const monAj  = raw(row, `montodescuentoorecargo${n}`);
+    const indFac = raw(row, `indicadorfacturaciondescuentoorecargo${n}`);
+    const linAj  = raw(row, `numerolineador${n}`) || String(n);
+    const aj: Record<string,unknown> = { NumeroLinea: toNum(linAj) ?? n };
+    if (tipoAj) aj.TipoAjuste                          = tipoAj;
+    if (descAj) aj.DescripcionDescuentoRecargo          = descAj;
+    if (tipVal) aj.TipoValor                            = tipVal;
+    if (monAj)  aj.MontoDescuentoRecargo                = toNum(monAj);
+    if (indFac) aj.IndicadorFacturacionDescuentoRecargo = indFac;
+    ajustesGlobales.push(aj);
+  }
+
   // ── Items ──────────────────────────────────────────────────────────────────
   const itemsList: Record<string,unknown>[] = [];
 
   for (let i = 1; i <= 62; i++) {
     const nom = raw(row, `nombreitem${i}`);
     if (!nom) break;
+
+    // Código de producto por item (tipocodigo{i}1, codigoitem{i}1)
+    const tipoCod = raw(row, `tipocodigo${i}1`);
+    const codItem = raw(row, `codigoitem${i}1`);
 
     const indFact = rawNum(row, `indicadorfacturacion${i}`) || "1";
     const retITBI = raw(row, `montoitbisretenido${i}`);
@@ -355,6 +378,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
 
     const item: Record<string,unknown> = {
       NumeroLinea: i,
+      ...(tipoCod && codItem ? { TablaCodigoItem: { CodigoItem: { TipoCodigo: tipoCod, Codigo: codItem } } } : {}),
       IndicadorFacturacion: indFact,
     };
 
@@ -460,6 +484,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         }
       } : {}),
       FechaHoraFirma,
+      ...(ajustesGlobales.length > 0 ? {
+        TablaDescuentoRecargo: {
+          DescuentoRecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
+        }
+      } : {}),
     },
   };
 
