@@ -238,7 +238,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const adval   = raw(row, `montoimpuestoselectivoconsumoadvalorem${k}`);
     const otros   = raw(row, `otrosimpuestosadicionales${k}`);
     const imp: Record<string,unknown> = { TipoImpuesto: tipoImp };
-    if (tasa)  imp.TasaImpuestoAdicional = toNum(tasa);
+    if (tasa)  imp.TasaImpuestoAdicional = toInt(tasa);  // tasa es entero: 10, no 10.00
     if (espec) imp.MontoImpuestoSelectivoConsumoEspecifico = toNum(espec);
     if (adval) imp.MontoImpuestoSelectivoConsumoAdvalorem  = toNum(adval);
     if (otros) imp.OtrosImpuestosAdicionales               = toNum(otros);
@@ -378,7 +378,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
 
     const item: Record<string,unknown> = {
       NumeroLinea: i,
-      ...(tipoCod && codItem ? { TablaCodigoItem: { CodigoItem: { TipoCodigo: tipoCod, Codigo: codItem } } } : {}),
+      ...(tipoCod && codItem ? { TablaCodigosItem: { CodigoItem: { TipoCodigo: tipoCod, Codigo: codItem } } } : {}),
       IndicadorFacturacion: indFact,
     };
 
@@ -404,33 +404,15 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
     item.PrecioUnitarioItem = precio;
 
-    // Descuento: DescuentoMonto tiene prioridad (DGII valida este campo primero)
-    // TablaSubDescuento solo cuando NO hay descuentomonto directo (solo porcentajes)
+    // Descuento: usar DescuentoMonto cuando existe (DGII prefiere este campo)
+    // TablaSubDescuento solo si no hay descuentomonto y hay subdescuentos de porcentaje
     if (descMonto) {
       item.DescuentoMonto = toNum(descMonto);
-    } else if (subDescs.length > 0) {
-      const subsArr = subDescs.map(s => {
-        const sub: Record<string,unknown> = { TipoSubDescuento: s.tipo };
-        if (s.pct) sub.SubDescuentoPorcentaje = toNum(s.pct);
-        if (s.mon) sub.MontoSubDescuento       = toNum(s.mon);
-        return sub;
-      });
-      item.TablaSubDescuento = { SubDescuento: subsArr.length === 1 ? subsArr[0] : subsArr };
     }
 
     if (recMon) item.RecargoMonto = toNum(recMon);
     item.MontoItem = toNum(mItem);
     if (itbItem) item.ITBIS = toNum(itbItem);
-
-    // TipoImpuesto por item (ISC: tipoimpuesto{i}1, tipoimpuesto{i}2...)
-    const tiposImpItem: string[] = [];
-    for (let j = 1; j <= 4; j++) {
-      const tImp = raw(row, `tipoimpuesto${i}${j}`);
-      if (tImp) tiposImpItem.push(tImp);
-      else break;
-    }
-    if (tiposImpItem.length === 1) item.TipoImpuesto = tiposImpItem[0];
-    else if (tiposImpItem.length > 1) item.TipoImpuesto = tiposImpItem;
 
     itemsList.push(item);
   }
@@ -471,6 +453,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         Emisor,
         ...(Object.keys(Comprador).length > 0 ? { Comprador } : {}),
         Totales,
+        ...(ajustesGlobales.length > 0 ? {
+          TablaDescuentoRecargo: {
+            DescuentoRecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
+          }
+        } : {}),
       },
       DetallesItems: {
         Item: itemsList.length === 1 ? itemsList[0] : itemsList,
@@ -484,11 +471,6 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         }
       } : {}),
       FechaHoraFirma,
-      ...(ajustesGlobales.length > 0 ? {
-        TablaDescuentoRecargo: {
-          DescuentoRecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
-        }
-      } : {}),
     },
   };
 
