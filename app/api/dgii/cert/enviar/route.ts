@@ -238,7 +238,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const adval   = raw(row, `montoimpuestoselectivoconsumoadvalorem${k}`);
     const otros   = raw(row, `otrosimpuestosadicionales${k}`);
     const imp: Record<string,unknown> = { TipoImpuesto: tipoImp };
-    if (tasa)  imp.TasaImpuestoAdicional = toNum(tasa);  // puede ser decimal: 633.85
+    if (tasa) {
+      // Tasa: entero si es porcentaje (10 → "10"), decimal si es monto (633.85 → "633.85")
+      const tasaN = parseFloat(tasa);
+      imp.TasaImpuestoAdicional = Number.isInteger(tasaN) ? tasaN : tasaN.toFixed(2);
+    }
     if (espec) imp.MontoImpuestoSelectivoConsumoEspecifico = toNum(espec);
     if (adval) imp.MontoImpuestoSelectivoConsumoAdvalorem  = toNum(adval);
     if (otros) imp.OtrosImpuestosAdicionales               = toNum(otros);
@@ -415,6 +419,20 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (recMon) item.RecargoMonto = toNum(recMon);
     item.MontoItem = toNum(mItem);
     if (itbItem) item.ITBIS = toNum(itbItem);
+
+    // TablaImpuestoAdicional por item (solo TipoImpuesto según XSD)
+    // Columnas: tipoimpuesto{i}1, tipoimpuesto{i}2
+    const tiposImpItem: Array<{TipoImpuesto: string}> = [];
+    for (let j = 1; j <= 4; j++) {
+      const tImpJ = raw(row, `tipoimpuesto${i}${j}`);
+      if (!tImpJ) break;
+      tiposImpItem.push({ TipoImpuesto: tImpJ });
+    }
+    if (tiposImpItem.length > 0) {
+      item.TablaImpuestoAdicional = {
+        ImpuestoAdicional: tiposImpItem.length === 1 ? tiposImpItem[0] : tiposImpItem
+      };
+    }
 
     itemsList.push(item);
   }
