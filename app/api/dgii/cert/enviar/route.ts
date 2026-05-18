@@ -238,7 +238,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const adval   = raw(row, `montoimpuestoselectivoconsumoadvalorem${k}`);
     const otros   = raw(row, `otrosimpuestosadicionales${k}`);
     const imp: Record<string,unknown> = { TipoImpuesto: tipoImp };
-    if (tasa)  imp.TasaImpuestoAdicional = toInt(tasa);  // tasa es entero: 10, no 10.00
+    if (tasa)  imp.TasaImpuestoAdicional = toNum(tasa);  // puede ser decimal: 633.85
     if (espec) imp.MontoImpuestoSelectivoConsumoEspecifico = toNum(espec);
     if (adval) imp.MontoImpuestoSelectivoConsumoAdvalorem  = toNum(adval);
     if (otros) imp.OtrosImpuestosAdicionales               = toNum(otros);
@@ -326,13 +326,13 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const monAj  = raw(row, `montodescuentoorecargo${n}`);
     const indFac = raw(row, `indicadorfacturaciondescuentoorecargo${n}`);
     const linAj  = raw(row, `numerolineador${n}`) || String(n);
-    const aj: Record<string,unknown> = { NumeroLinea: toNum(linAj) ?? n };
+    const aj: Record<string,unknown> = { NumeroLinea: parseInt(linAj) || n };
     if (tipoAj) aj.TipoAjuste                          = tipoAj;
     if (descAj) aj.DescripcionDescuentooRecargo             = descAj;
     if (tipVal) aj.TipoValor                               = tipVal;
     if (valAj)  aj.ValorDescuentooRecargo                  = toNum(valAj);
     if (monAj)  aj.MontoDescuentooRecargo                  = toNum(monAj);
-    if (indFac) aj.IndicadorFacturacionDescuentoRecargo = indFac;
+    if (indFac) aj.IndicadorFacturacionDescuentooRecargo = indFac;
     ajustesGlobales.push(aj);
   }
 
