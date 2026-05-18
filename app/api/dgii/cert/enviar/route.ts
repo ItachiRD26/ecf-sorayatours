@@ -322,14 +322,16 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (!descAj) break;
     const tipoAj = raw(row, `tipoajuste${n}`);
     const tipVal = raw(row, `tipovalor${n}`);
+    const valAj  = raw(row, `valordescuentoorecargo${n}`);
     const monAj  = raw(row, `montodescuentoorecargo${n}`);
     const indFac = raw(row, `indicadorfacturaciondescuentoorecargo${n}`);
     const linAj  = raw(row, `numerolineador${n}`) || String(n);
     const aj: Record<string,unknown> = { NumeroLinea: toNum(linAj) ?? n };
     if (tipoAj) aj.TipoAjuste                          = tipoAj;
-    if (descAj) aj.DescripcionDescuentoRecargo          = descAj;
-    if (tipVal) aj.TipoValor                            = tipVal;
-    if (monAj)  aj.MontoDescuentoRecargo                = toNum(monAj);
+    if (descAj) aj.DescripcionDescuentooRecargo             = descAj;
+    if (tipVal) aj.TipoValor                               = tipVal;
+    if (valAj)  aj.ValorDescuentooRecargo                  = toNum(valAj);
+    if (monAj)  aj.MontoDescuentooRecargo                  = toNum(monAj);
     if (indFac) aj.IndicadorFacturacionDescuentoRecargo = indFac;
     ajustesGlobales.push(aj);
   }
@@ -454,8 +456,8 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         ...(Object.keys(Comprador).length > 0 ? { Comprador } : {}),
         Totales,
         ...(ajustesGlobales.length > 0 ? {
-          TablaDescuentoRecargo: {
-            DescuentoRecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
+          DescuentosORecargos: {
+            DescuentoORecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
           }
         } : {}),
       },
