@@ -380,7 +380,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
 
     const item: Record<string,unknown> = {
       NumeroLinea: i,
-      ...(tipoCod && codItem ? { TablaCodigosItem: { CodigoItem: { TipoCodigo: tipoCod, Codigo: codItem } } } : {}),
+      ...(tipoCod && codItem ? { TablaCodigosItem: { CodigosItem: { TipoCodigo: tipoCod, CodigoItem: codItem } } } : {}),
       IndicadorFacturacion: indFact,
     };
 
@@ -455,11 +455,6 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         Emisor,
         ...(Object.keys(Comprador).length > 0 ? { Comprador } : {}),
         Totales,
-        ...(ajustesGlobales.length > 0 ? {
-          DescuentosORecargos: {
-            DescuentoORecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
-          }
-        } : {}),
       },
       DetallesItems: {
         Item: itemsList.length === 1 ? itemsList[0] : itemsList,
@@ -470,6 +465,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
           FechaNCFModificado: fechaMod || fmtFecha(raw(row,"fechaemision","fecha_emision")),
           CodigoModificacion: codMod,
           ...(razMod ? { RazonModificacion: razMod } : {}),
+        }
+      } : {}),
+      ...(ajustesGlobales.length > 0 ? {
+        DescuentosORecargos: {
+          DescuentoORecargo: ajustesGlobales.length === 1 ? ajustesGlobales[0] : ajustesGlobales
         }
       } : {}),
       FechaHoraFirma,
