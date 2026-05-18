@@ -10,7 +10,6 @@ import ECF, {
   P12Reader,
   Signature,
   ENVIRONMENT,
-  convertECF32ToRFCE,
 } from "dgii-ecf";
 
 // ── Configuración ──────────────────────────────────────────────────────────────
@@ -475,29 +474,76 @@ export async function POST(req: NextRequest) {
 
     if (esRFCE) {
       // ── RFCE: E32 < RD$250k ───────────────────────────────────────────────
-      // 1. Construir y firmar el ECF32 completo
-      const json      = buildJsonECF(row, encf);
+      // Construimos el RFCE directamente desde el Excel — NO usamos convertECF32ToRFCE
+      // porque ese helper re-parsea el XML firmado y pierde el formato decimal
+      const ecfJson = buildJsonECF(row, encf);
+      const enc     = ecfJson.ECF as Record<string,unknown>;
+      const encab   = enc.Encabezado as Record<string,unknown>;
+      const idDoc   = encab.IdDoc   as Record<string,unknown>;
+      const emisor  = encab.Emisor  as Record<string,unknown>;
+      const comprad = encab.Comprador as Record<string,unknown> | undefined;
+      const totales = encab.Totales as Record<string,unknown>;
+
+      // Primero firmamos el ECF para obtener el CodigoSeguridadeCF
       const { Transformer } = await import("dgii-ecf");
       const transformer     = new Transformer();
-      const xml             = transformer.json2xml(json);
-      const signedEcf       = signature.signXml(xml, "ECF");
+      const ecfXml          = transformer.json2xml(ecfJson);
+      const signedEcf       = signature.signXml(ecfXml, "ECF");
 
-      // 2. Convertir ECF32 → RFCE (la librería añade CodigoSeguridadeCF)
-      const { xml: rfceXml } = convertECF32ToRFCE(signedEcf);
+      // Extraer CodigoSeguridadeCF (primeros 6 chars del SHA256 del SignatureValue)
+      const { getCodeSixDigitfromSignature } = await import("dgii-ecf");
+      const codigoSeguridad = getCodeSixDigitfromSignature(signedEcf);
+      if (!codigoSeguridad) throw new Error("No se pudo obtener CodigoSeguridadeCF");
 
-      // 3. Firmar el RFCE
+      // Construir RFCE con valores ya formateados (strings "34000.00")
+      const rfceIdDoc: Record<string,unknown> = {
+        TipoeCF: idDoc.TipoeCF,
+        eNCF:    idDoc.eNCF,
+        ...(idDoc.TipoIngresos ? { TipoIngresos: idDoc.TipoIngresos } : {}),
+        ...(idDoc.TipoPago     ? { TipoPago:     idDoc.TipoPago     } : {}),
+      };
+
+      const rfceTotales: Record<string,unknown> = {};
+      const numFields = ["MontoGravadoTotal","MontoGravadoI1","MontoGravadoI2","MontoGravadoI3",
+        "MontoExento","TotalITBIS","TotalITBIS1","TotalITBIS2","TotalITBIS3",
+        "MontoImpuestoAdicional","MontoTotal","MontoNoFacturable","MontoPeriodo"];
+      for (const f of numFields) {
+        if (totales[f] !== undefined && totales[f] !== null) rfceTotales[f] = totales[f];
+      }
+
+      const rfceJson = {
+        RFCE: {
+          Encabezado: {
+            Version: "1.0",
+            IdDoc: rfceIdDoc,
+            Emisor: {
+              RNCEmisor: emisor.RNCEmisor,
+              RazonSocialEmisor: emisor.RazonSocialEmisor,
+              FechaEmision: emisor.FechaEmision,
+            },
+            ...(comprad && Object.keys(comprad).length > 0 ? { Comprador: {
+              ...(comprad.RNCComprador ? { RNCComprador: comprad.RNCComprador } : {}),
+              ...(comprad.IdentificadorExtranjero ? { IdentificadorExtranjero: comprad.IdentificadorExtranjero } : {}),
+              ...(comprad.RazonSocialComprador ? { RazonSocialComprador: comprad.RazonSocialComprador } : {}),
+            }} : {}),
+            Totales: rfceTotales,
+            CodigoSeguridadeCF: codigoSeguridad,
+          },
+        },
+      };
+
+      const rfceXml    = transformer.json2xml(rfceJson);
       const signedRFCE = signature.signXml(rfceXml, "RFCE");
 
-      // 4. Enviar
-      const resultado  = await ecfClient.sendSummary(signedRFCE, fileName);
-
-      // Debug opcional
+      // Debug
       try {
         const fs2 = await import("fs"); const p = await import("path");
         fs2.mkdirSync("/tmp/ecf-debug", { recursive: true });
-        fs2.writeFileSync(p.join("/tmp/ecf-debug", `${encf}_signed.xml`), signedRFCE);
+        fs2.writeFileSync(p.join("/tmp/ecf-debug", `${encf}_ecf_signed.xml`),  signedEcf);
+        fs2.writeFileSync(p.join("/tmp/ecf-debug", `${encf}_rfce_signed.xml`), signedRFCE);
       } catch { /* no critical */ }
 
+      const resultado = await ecfClient.sendSummary(signedRFCE, fileName);
       console.log(`[cert/enviar] RFCE ${encf}:`, JSON.stringify(resultado));
       return NextResponse.json({ success: true, encf, resultado });
 
