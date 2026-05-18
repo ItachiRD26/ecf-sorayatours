@@ -417,10 +417,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     }
 
     if (recMon) item.RecargoMonto = toNum(recMon);
-    item.MontoItem = toNum(mItem);
-    if (itbItem) item.ITBIS = toNum(itbItem);
-
-    // TablaImpuestoAdicional por item (solo TipoImpuesto según XSD)
+    // TablaImpuestoAdicional ANTES de MontoItem (orden XSD)
     // Columnas: tipoimpuesto{i}1, tipoimpuesto{i}2
     const tiposImpItem: Array<{TipoImpuesto: string}> = [];
     for (let j = 1; j <= 4; j++) {
@@ -433,6 +430,9 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
         ImpuestoAdicional: tiposImpItem.length === 1 ? tiposImpItem[0] : tiposImpItem
       };
     }
+
+    item.MontoItem = toNum(mItem);
+    if (itbItem) item.ITBIS = toNum(itbItem);
 
     itemsList.push(item);
   }
