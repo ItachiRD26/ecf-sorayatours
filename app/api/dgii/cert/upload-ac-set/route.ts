@@ -73,11 +73,14 @@ function rowToACItem(raw: Record<string, unknown>): ACItem | null {
   const montoTotal    = typeof montoRaw === "number" ? montoRaw : parseFloat(String(montoRaw).replace(/[^\d.-]/g, "")) || 0;
   const estadoRaw     = Number(normalized.estado ?? 1);
   const estado        = (estadoRaw === 2 ? 2 : 1) as 1 | 2;
-  const motivoRechazo = estado === 2 ? String(normalized.motivoRechazo ?? "").trim() : undefined;
+  // Firestore rechaza undefined — se omite el campo si no aplica
+  const motivoStr = estado === 2 ? String(normalized.motivoRechazo ?? "").trim() : "";
 
   if (!rncComprador || !fechaEmision) return null;
 
-  return { encf, tipo, rncEmisor, rncComprador, fechaEmision, montoTotal, estado, motivoRechazo };
+  const item: ACItem = { encf, tipo, rncEmisor, rncComprador, fechaEmision, montoTotal, estado };
+  if (motivoStr) item.motivoRechazo = motivoStr;
+  return item;
 }
 
 function tipoDeENCF(encf: string): string {
