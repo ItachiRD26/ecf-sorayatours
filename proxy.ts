@@ -6,6 +6,8 @@ const SESSION_COOKIE = "__session";
 const PUBLIC_PATHS = [
   "/login",
   "/api/auth/session",
+   "/api/dgii/cert/debug-row",        // ← añadir
+  "/api/dgii/cert/consultar-trackid", // ← añadir
   "/api/auth/logout",
   "/_next",
   "/favicon.ico",

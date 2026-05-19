@@ -351,6 +351,18 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const tipoCod = raw(row, `tipocodigo${i}1`);
     const codItem = raw(row, `codigoitem${i}1`);
 
+    // SubcantidadItem: subcantidad{i}{j}, codigosubcantidad{i}{j}
+    const subcants: Array<{Subcantidad?: string; CodigoSubcantidad?: string}> = [];
+    for (let j = 1; j <= 5; j++) {
+      const sQty  = raw(row, `subcantidad${i}${j}`);
+      const sCod  = raw(row, `codigosubcantidad${i}${j}`);
+      if (!sQty && !sCod) break;
+      const sc: {Subcantidad?: string; CodigoSubcantidad?: string} = {};
+      if (sQty) sc.Subcantidad        = sQty;
+      if (sCod) sc.CodigoSubcantidad  = sCod;
+      subcants.push(sc);
+    }
+
     const indFact = rawNum(row, `indicadorfacturacion${i}`) || "1";
     const retITBI = raw(row, `montoitbisretenido${i}`);
     const retISR  = raw(row, `montoisrretenido${i}`);
@@ -385,6 +397,7 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const item: Record<string,unknown> = {
       NumeroLinea: i,
       ...(tipoCod && codItem ? { TablaCodigosItem: { CodigosItem: { TipoCodigo: tipoCod, CodigoItem: codItem } } } : {}),
+      ...(subcants.length > 0 ? { TablaSubcantidadItem: { SubcantidadItem: subcants.length === 1 ? subcants[0] : subcants } } : {}),
       IndicadorFacturacion: indFact,
     };
 
@@ -410,9 +423,9 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
     item.PrecioUnitarioItem = precio;
 
-    // Descuento: usar DescuentoMonto cuando existe (DGII prefiere este campo)
-    // TablaSubDescuento solo si no hay descuentomonto y hay subdescuentos de porcentaje
-    if (descMonto) {
+    // Descuento: usar DescuentoMonto cuando tiene valor real > 0
+    const descMontoNum = parseFloat(descMonto);
+    if (descMonto && !isNaN(descMontoNum) && descMontoNum > 0) {
       item.DescuentoMonto = toNum(descMonto);
     }
 
