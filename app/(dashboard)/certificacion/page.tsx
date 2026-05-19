@@ -303,6 +303,7 @@ export default function CertificacionPage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
           encf,
+          rncEmisor:    item.rncEmisor,     // del Excel DGII (quien emitió el e-CF)
           rncComprador: item.rncComprador,
           fechaEmision: item.fechaEmision,
           montoTotal:   item.montoTotal,

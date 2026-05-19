@@ -123,16 +123,20 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as {
       encf:           string;
+      rncEmisor?:     string;   // del Excel DGII (quien emitió el e-CF)
       rncComprador:   string;
       fechaEmision:   string;
       montoTotal:     number | string;
-      fechaHoraAC?:  string;   // viene del Excel DGII; si falta se genera ahora
+      fechaHoraAC?:   string;   // viene del Excel DGII; si falta se genera ahora
       estado?:        number;
       motivoRechazo?: string;
       token?:         string;
     };
 
     const { encf, rncComprador, fechaEmision, motivoRechazo } = body;
+    // RNCEmisor: usar el del Excel (quien emitió el e-CF), no el nuestro
+    // Ej: en certecf DGII emite con 131880681 y nosotros somos el comprador que aprueba
+    const rncEmisorAC = (body.rncEmisor ?? "").replace(/\D/g, "") || RNC_EMISOR;
     const token = body.token ?? "";
 
     if (!encf || !rncComprador || !fechaEmision || body.montoTotal === undefined)
@@ -162,7 +166,7 @@ export async function POST(req: NextRequest) {
 
     // 1. Construir XML
     const xmlSinFirma = buildACECFXml({
-      rncEmisor:    RNC_EMISOR,
+      rncEmisor:    rncEmisorAC,  // del Excel DGII
       encf,
       fechaEmision,
       montoTotal,
@@ -180,7 +184,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Guardar en Firestore
     const firestoreDoc: Record<string, unknown> = {
-      encf, tipo, rncComprador: rncComprador.replace(/\D/g, ""),
+      encf, tipo, rncEmisor: rncEmisorAC, rncComprador: rncComprador.replace(/\D/g, ""),
       fechaEmision, montoTotal, estado, fechaHoraAC,
       resultado, enviadoEn: new Date().toISOString(),
     };
