@@ -397,7 +397,6 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     const item: Record<string,unknown> = {
       NumeroLinea: i,
       ...(tipoCod && codItem ? { TablaCodigosItem: { CodigosItem: { TipoCodigo: tipoCod, CodigoItem: codItem } } } : {}),
-      ...(subcants.length > 0 ? { TablaSubcantidadItem: { SubcantidadItem: subcants.length === 1 ? subcants[0] : subcants } } : {}),
       IndicadorFacturacion: indFact,
     };
 
@@ -417,16 +416,38 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     if (unidMed) item.UnidadMedida = unidMed;
     if (cantRef) item.CantidadReferencia = cantRef;
     if (unidRef) item.UnidadReferencia   = unidRef;
+    // TablaSubcantidad: después de UnidadReferencia (XSD línea 252)
+    if (subcants.length > 0) item.TablaSubcantidad = { SubcantidadItem: subcants.length === 1 ? subcants[0] : subcants };
     if (gradAlc) item.GradosAlcohol      = gradAlc;
     if (precRef) item.PrecioUnitarioReferencia = precRef;
     if (fechaElab)  item.FechaElaboracion     = fechaElab;
     if (fechaVencI) item.FechaVencimientoItem = fechaVencI;
     item.PrecioUnitarioItem = precio;
 
-    // Descuento: usar DescuentoMonto cuando tiene valor real > 0
-    const descMontoNum = parseFloat(descMonto);
-    if (descMonto && !isNaN(descMontoNum) && descMontoNum > 0) {
-      item.DescuentoMonto = toNum(descMonto);
+    // Descuento según DGII: E43 y E47 no aplica (obligatoriedad=0)
+    // Para otros tipos: TablaSubDescuento + DescuentoMonto (suma) van juntos
+    const descuentoNoAplica = ["43","47"].includes(tipo);
+    if (!descuentoNoAplica) {
+      if (subDescs.length > 0) {
+        // TablaSubDescuento: enviar la tabla
+        const subsArr = subDescs.map(s => {
+          const sub: Record<string,unknown> = { TipoSubDescuento: s.tipo };
+          if (s.pct) sub.SubDescuentoPorcentaje = toNum(s.pct);
+          if (s.mon) sub.MontoSubDescuento       = toNum(s.mon);
+          return sub;
+        });
+        item.TablaSubDescuento = { SubDescuento: subsArr.length === 1 ? subsArr[0] : subsArr };
+        // DescuentoMonto = suma de MontoSubDescuento (obligatorio cuando hay tabla)
+        const sumaSD = subDescs.reduce((acc, s) => acc + parseFloat(s.mon || "0"), 0);
+        if (sumaSD > 0) item.DescuentoMonto = toNum(sumaSD.toFixed(2));
+        else if (descMonto && parseFloat(descMonto) > 0) item.DescuentoMonto = toNum(descMonto);
+      } else {
+        // Solo DescuentoMonto directo
+        const descMontoNum = parseFloat(descMonto);
+        if (descMonto && !isNaN(descMontoNum) && descMontoNum > 0) {
+          item.DescuentoMonto = toNum(descMonto);
+        }
+      }
     }
 
     if (recMon) item.RecargoMonto = toNum(recMon);
