@@ -520,9 +520,11 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
   // ── FechaHoraFirma ─────────────────────────────────────────────────────────
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2,"0");
+  // Incluir milisegundos para garantizar código de seguridad único entre runs
+  const ms  = String(now.getMilliseconds()).padStart(3,"0");
   const FechaHoraFirma =
     `${pad(now.getDate())}-${pad(now.getMonth()+1)}-${now.getFullYear()} ` +
-    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${ms}`;
 
   // ── Ensamblar JSON final ───────────────────────────────────────────────────
   const json: Record<string,unknown> = {
