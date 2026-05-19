@@ -98,11 +98,11 @@ function tipoECF(encf: string, rawTipo: string): string {
 // La librería usa Transformer.json2xml() que serializa JSON → XML
 // El JSON sigue EXACTAMENTE la estructura del XSD (mismos nombres de campos)
 // Los campos opcionales ausentes simplemente no se incluyen → no se generan tags vacíos
-function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,unknown> {
+export function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,unknown> {
   const tipo = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
 
   // ── IdDoc ──────────────────────────────────────────────────────────────────
-  const tieneFechaVencim  = !["32","34"].includes(tipo);
+  const tieneFechaVencim  = !["32","34","41"].includes(tipo);  // E32/E34/E41 tienen obligatoriedad 0
   const tieneNotaCredito  = tipo === "34";
   const tieneIngresos     = !["41","43","47"].includes(tipo);
   const tipoPagoReq       = !["41","43","47"].includes(tipo);
