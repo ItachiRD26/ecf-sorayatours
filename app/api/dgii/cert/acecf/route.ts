@@ -62,13 +62,28 @@ async function enviarACECF(
   encf: string,
   token: string,
 ): Promise<{ mensaje: string; estado: string; codigo: string }> {
-  // URL corregida según Swagger oficial certecf — mismo patrón que Recepcion y Consulta
-  // testecf: /testecf/emisorreceptor/fe/aprobacioncomercial/api/ecf
-  // certecf: /CerteCF/emisorreceptor/fe/aprobacioncomercial/api/ecf
-  const amb = process.env.DGII_AMBIENTE ?? "certecf";
-  const url = amb.toLowerCase() === "certecf"
-    ? `${ECF_HOST}/CerteCF/emisorreceptor/fe/aprobacioncomercial/api/ecf`
-    : `${ECF_HOST}/${amb}/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
+  // ── Construcción de URL ───────────────────────────────────────────────────
+  // Se puede sobreescribir completamente con DGII_AC_URL en .env
+  // Patrón certecf Swagger (mismo estilo que Recepcion y ConsultaResultado):
+  //   /CerteCF/AprobacionComercial/api/AprobacionComercial  ← Swagger certecf oficial
+  // Patrón testecf (documentación oficial):
+  //   /testecf/emisorreceptor/fe/aprobacioncomercial/api/ecf
+  const url = (() => {
+    if (process.env.DGII_AC_URL) return process.env.DGII_AC_URL;
+    const amb = (process.env.DGII_AMBIENTE ?? "certecf").toLowerCase();
+    if (amb === "certecf") {
+      // Swagger certecf sigue el patrón /CerteCF/{Servicio}/api/{Controlador}
+      return `${ECF_HOST}/CerteCF/AprobacionComercial/api/AprobacionComercial`;
+    }
+    if (amb === "ecf") {
+      // Producción
+      return `${ECF_HOST}/ecf/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
+    }
+    // testecf y demás
+    return `${ECF_HOST}/${amb}/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
+  })();
+
+  console.log("[DGII/acecf] URL →", url);
   const filename = `${RNC_EMISOR}${encf}.xml`;
 
   const form = new FormData();
