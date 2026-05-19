@@ -62,8 +62,13 @@ async function enviarACECF(
   encf: string,
   token: string,
 ): Promise<{ mensaje: string; estado: string; codigo: string }> {
-  const amb      = process.env.DGII_AMBIENTE ?? "certecf";
-  const url      = `${ECF_HOST}/${amb}/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
+  // URL corregida según Swagger oficial certecf — mismo patrón que Recepcion y Consulta
+  // testecf: /testecf/emisorreceptor/fe/aprobacioncomercial/api/ecf
+  // certecf: /CerteCF/emisorreceptor/fe/aprobacioncomercial/api/ecf
+  const amb = process.env.DGII_AMBIENTE ?? "certecf";
+  const url = amb.toLowerCase() === "certecf"
+    ? `${ECF_HOST}/CerteCF/emisorreceptor/fe/aprobacioncomercial/api/ecf`
+    : `${ECF_HOST}/${amb}/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
   const filename = `${RNC_EMISOR}${encf}.xml`;
 
   const form = new FormData();
