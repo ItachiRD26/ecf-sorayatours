@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Paso4Tab from "./paso4tab";
 import { useToast } from "@/hooks/usetoast";
 
 const sans  = "var(--font-sans)";
@@ -79,7 +80,7 @@ export default function CertificacionPage() {
   const { push, ToastContainer } = useToast();
 
   // ── Tabs
-  const [tab, setTab] = useState<"paso2" | "paso3">("paso2");
+  const [tab, setTab] = useState<"paso2" | "paso3" | "paso4">("paso2");
 
   // ── Paso 2 state
   const fileRefSemilla = useRef<HTMLInputElement>(null);
@@ -105,6 +106,16 @@ export default function CertificacionPage() {
   // Edición manual de estado/motivo de cada fila
   const [edits,        setEdits]        = useState<Record<string, { estado: 1|2; motivo: string }>>({});
 
+  // ── Paso 4 state
+  const fileRefExcel4      = useRef<HTMLInputElement>(null);
+  interface P4Item { encf: string; tipo: string; desc: string; montoTotal: number; esRFCE: boolean }
+  const [p4Items,          setP4Items]        = useState<P4Item[]>([]);
+  const [p4Info,           setP4Info]         = useState<string | null>(null);
+  const [subiendoExcel4,   setSubiendoExcel4] = useState(false);
+  const [enviandoTodo4,    setEnviandoTodo4]  = useState(false);
+  const [estados4,         setEstados4]       = useState<Record<string, EstadoEnvio>>({});
+  const [trackIds4,        setTrackIds4]      = useState<Record<string, string>>({});
+
   // ── Helpers token
   const tokenValido  = !!token;
   const tokenMinutos = tokenExpira
@@ -115,6 +126,8 @@ export default function CertificacionPage() {
   const setTrack     = (e: string, t: string)       => setTrackIds(prev => ({ ...prev, [e]: t }));
   const setEstadoAC  = (e: string, s: EstadoEnvio) => setEstadosAC(prev => ({ ...prev, [e]: s }));
   const setMensajeAC = (e: string, m: string)       => setMensajesAC(prev => ({ ...prev, [e]: m }));
+  const setEstado4   = (e: string, s: EstadoEnvio) => setEstados4(prev => ({ ...prev, [e]: s }));
+  const setTrack4    = (e: string, t: string)       => setTrackIds4(prev => ({ ...prev, [e]: t }));
 
   // ─────────────────────────────────────────────────────────────────────────
   // PASO 2 — Handlers
@@ -381,10 +394,11 @@ export default function CertificacionPage() {
         {[
           { id: "paso2", label: "Paso 2 — Set de Comprobantes",       color: "#0e7490" },
           { id: "paso3", label: "Paso 3 — Aprobaciones Comerciales",  color: "#7c3aed" },
+          { id: "paso4", label: "Paso 4 — Simulación",                color: "#059669" },
         ].map(t => (
           <button
             key={t.id}
-            onClick={() => setTab(t.id as "paso2" | "paso3")}
+            onClick={() => setTab(t.id as "paso2" | "paso3" | "paso4")}
             style={{
               padding: "9px 18px", fontSize: 13, fontWeight: 600, fontFamily: sans,
               border: "none", cursor: "pointer", borderRadius: "4px 4px 0 0",
@@ -582,6 +596,8 @@ export default function CertificacionPage() {
       {/* ════════════════════════════════════════════════════════════════════
           TAB PASO 3 — APROBACIONES COMERCIALES
       ════════════════════════════════════════════════════════════════════ */}
+      {tab === "paso4" && <Paso4Tab token={token} />}
+
       {tab === "paso3" && (
         <div>
           {/* ── Info banner ── */}
