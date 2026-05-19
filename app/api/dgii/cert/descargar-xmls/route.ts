@@ -117,7 +117,7 @@ async function generarRFCEFirmado(caso: typeof CASOS_E32_PEQUENAS[0]): Promise<s
     const ecfSigned = fs.readFileSync(ecfSignedPath, "utf8");
     const sigMatch  = ecfSigned.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
     const sigVal    = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
-    codigo          = sigVal.slice(0, 6);
+    codigo = sigVal.replace(/[^a-zA-Z0-9]/g, "").slice(0, 6);
   } catch {
     throw new Error(`No se encontró el ECF aprobado para ${caso.eNCF}. Asegúrate de haber enviado el set de certificación primero.`);
   }
