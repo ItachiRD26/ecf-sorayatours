@@ -425,11 +425,15 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
     item.PrecioUnitarioItem = precio;
 
     // Descuento según DGII: E43 y E47 no aplica (obligatoriedad=0)
-    // Para otros tipos: TablaSubDescuento + DescuentoMonto (suma) van juntos
+    // XSD orden: DescuentoMonto PRIMERO, luego TablaSubDescuento
     const descuentoNoAplica = ["43","47"].includes(tipo);
     if (!descuentoNoAplica) {
       if (subDescs.length > 0) {
-        // TablaSubDescuento: enviar la tabla
+        // DescuentoMonto = suma de MontoSubDescuento (va ANTES de TablaSubDescuento)
+        const sumaSD = subDescs.reduce((acc, s) => acc + parseFloat(s.mon || "0"), 0);
+        if (sumaSD > 0) item.DescuentoMonto = toNum(sumaSD.toFixed(2));
+        else if (descMonto && parseFloat(descMonto) > 0) item.DescuentoMonto = toNum(descMonto);
+        // TablaSubDescuento: DESPUÉS de DescuentoMonto
         const subsArr = subDescs.map(s => {
           const sub: Record<string,unknown> = { TipoSubDescuento: s.tipo };
           if (s.pct) sub.SubDescuentoPorcentaje = toNum(s.pct);
@@ -437,12 +441,8 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
           return sub;
         });
         item.TablaSubDescuento = { SubDescuento: subsArr.length === 1 ? subsArr[0] : subsArr };
-        // DescuentoMonto = suma de MontoSubDescuento (obligatorio cuando hay tabla)
-        const sumaSD = subDescs.reduce((acc, s) => acc + parseFloat(s.mon || "0"), 0);
-        if (sumaSD > 0) item.DescuentoMonto = toNum(sumaSD.toFixed(2));
-        else if (descMonto && parseFloat(descMonto) > 0) item.DescuentoMonto = toNum(descMonto);
       } else {
-        // Solo DescuentoMonto directo
+        // Solo DescuentoMonto directo (sin tabla)
         const descMontoNum = parseFloat(descMonto);
         if (descMonto && !isNaN(descMontoNum) && descMontoNum > 0) {
           item.DescuentoMonto = toNum(descMonto);
