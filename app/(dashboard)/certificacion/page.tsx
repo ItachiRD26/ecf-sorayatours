@@ -51,9 +51,10 @@ interface ACItem {
   tipo:           string;
   rncEmisor:      string;
   rncComprador:   string;
-  fechaEmision:   string;
+  fechaEmision:   string;   // dd-MM-YYYY
   montoTotal:     number;
-  estado:         1 | 2;
+  estado:         1 | 2;    // 1=Aceptado, 2=Rechazado
+  fechaHoraAC:    string;   // dd-MM-YYYY HH:mm:ss — del Excel DGII
   motivoRechazo?: string;
 }
 
@@ -305,8 +306,9 @@ export default function CertificacionPage() {
           rncComprador: item.rncComprador,
           fechaEmision: item.fechaEmision,
           montoTotal:   item.montoTotal,
+          fechaHoraAC:  item.fechaHoraAC,   // viene del Excel DGII
           estado,
-          motivoRechazo: estado === 2 ? motivo : undefined,
+          ...(estado === 2 && motivo ? { motivoRechazo: motivo } : {}),
           token,
         }),
       });
