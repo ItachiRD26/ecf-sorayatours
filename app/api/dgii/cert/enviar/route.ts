@@ -102,7 +102,7 @@ export function buildJsonECF(row: Record<string,unknown>, encf: string): Record<
   const tipo = tipoECF(encf, raw(row,"tipoecf","tipo_ecf"));
 
   // ── IdDoc ──────────────────────────────────────────────────────────────────
-  const tieneFechaVencim  = !["32","34","41"].includes(tipo);  // E32/E34/E41 tienen obligatoriedad 0
+  const tieneFechaVencim  = true;  // Si el Excel tiene el valor, enviar siempre
   const tieneNotaCredito  = tipo === "34";
   const tieneIngresos     = !["41","43","47"].includes(tipo);
   const tipoPagoReq       = !["41","43","47"].includes(tipo);
@@ -628,6 +628,16 @@ export async function POST(req: NextRequest) {
       const { getCodeSixDigitfromSignature } = await import("dgii-ecf");
       const codigoSeguridad = getCodeSixDigitfromSignature(signedEcf);
       if (!codigoSeguridad) throw new Error("No se pudo obtener CodigoSeguridadeCF");
+
+      // Guardar ECF firmado en Firestore para que descargar-xmls lo sirva con el mismo código
+      try {
+        const { adminDb } = await import("@/lib/firebase-admin");
+        await adminDb.collection("ecf_firmados").doc(encf).set({
+          signedEcf,
+          codigoSeguridad,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (e) { console.warn("No se pudo guardar ECF firmado:", e); }
 
       // Construir RFCE con valores ya formateados (strings "34000.00")
       const rfceIdDoc: Record<string,unknown> = {
