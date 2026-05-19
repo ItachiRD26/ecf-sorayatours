@@ -450,7 +450,33 @@ function buildJsonECF(row: Record<string,unknown>, encf: string): Record<string,
       }
     }
 
-    if (recMon) item.RecargoMonto = toNum(recMon);
+    // RecargoMonto según DGII: E43 y E47 no aplica (obligatoriedad=0)
+    // XSD orden: RecargoMonto PRIMERO, luego TablaSubRecargo
+    const recargoNoAplica = ["43","47"].includes(tipo);
+    if (!recargoNoAplica) {
+      const subRecargoArr: Array<{tipo:string; pct?:string; mon?:string}> = [];
+      for (let j = 1; j <= 5; j++) {
+        const tipoSR = raw(row, `tiposubrecargo${i}${j}`);
+        if (!tipoSR) break;
+        const pctSR  = raw(row, `subrecargoporcentaje${i}${j}`);
+        const monSR  = raw(row, `montosubrecargo${i}${j}`);
+        subRecargoArr.push({ tipo: tipoSR, pct: pctSR || undefined, mon: monSR || undefined });
+      }
+      if (subRecargoArr.length > 0) {
+        const sumaRec = subRecargoArr.reduce((acc, s) => acc + parseFloat(s.mon || "0"), 0);
+        if (sumaRec > 0) item.RecargoMonto = toNum(sumaRec.toFixed(2));
+        else if (recMon && parseFloat(recMon) > 0) item.RecargoMonto = toNum(recMon);
+        const recArr = subRecargoArr.map(s => {
+          const rec: Record<string,unknown> = { TipoSubRecargo: s.tipo };
+          if (s.pct) rec.SubRecargoPorcentaje = toNum(s.pct);
+          if (s.mon) rec.MontoSubRecargo      = toNum(s.mon);
+          return rec;
+        });
+        item.TablaSubRecargo = { SubRecargo: recArr.length === 1 ? recArr[0] : recArr };
+      } else if (recMon && parseFloat(recMon) > 0) {
+        item.RecargoMonto = toNum(recMon);
+      }
+    }
     // TablaImpuestoAdicional ANTES de MontoItem (orden XSD)
     // Columnas: tipoimpuesto{i}1, tipoimpuesto{i}2
     const tiposImpItem: Array<{TipoImpuesto: string}> = [];
