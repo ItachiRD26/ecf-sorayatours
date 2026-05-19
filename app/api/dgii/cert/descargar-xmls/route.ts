@@ -4,6 +4,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
 import { firmarXML } from "@/lib/dgii/xml-signer";
+import * as fs from "fs";
+import * as path from "path";
 
 async function verificarSesion(req: NextRequest): Promise<boolean> {
   const cookie = req.cookies.get("__session")?.value;
@@ -107,17 +109,23 @@ function buildRFCE(c: typeof CASOS_E32_PEQUENAS[0], codigoSeguridad: string): st
 }
 
 async function generarRFCEFirmado(caso: typeof CASOS_E32_PEQUENAS[0]): Promise<string> {
-  // 1ra firma sobre ECF temporal → extraer SignatureValue → CodigoSeguridadeCF
-  const ecfTemp   = buildECFTemporal(caso);
-  const firmado1  = await firmarXML(ecfTemp);
-  const sigMatch  = firmado1.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
-  const sigVal    = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
-  const codigo    = sigVal.slice(0, 6);
+  // Leer el ECF ya aprobado por DGII para obtener el CodigoSeguridadeCF correcto
+  const ecfSignedPath = path.join("/tmp/ecf-debug", `${caso.eNCF}_ecf_signed.xml`);
+  
+  let codigo = "";
+  try {
+    const ecfSigned = fs.readFileSync(ecfSignedPath, "utf8");
+    const sigMatch  = ecfSigned.match(/<SignatureValue>([^<]+)<\/SignatureValue>/);
+    const sigVal    = sigMatch ? sigMatch[1].replace(/\s/g, "") : "";
+    codigo          = sigVal.slice(0, 6);
+  } catch {
+    throw new Error(`No se encontró el ECF aprobado para ${caso.eNCF}. Asegúrate de haber enviado el set de certificación primero.`);
+  }
 
-  // 2da firma sobre el RFCE real con el código correcto
-  const rfceXml   = buildRFCE(caso, codigo);
-  const firmado2  = await firmarXML(rfceXml);
-  return firmado2;
+  // Construir y firmar el RFCE con el código del ECF real
+  const rfceXml  = buildRFCE(caso, codigo);
+  const firmado  = await firmarXML(rfceXml);
+  return firmado;
 }
 
 // GET → genera todos los XMLs firmados y los retorna como JSON
