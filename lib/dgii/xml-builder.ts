@@ -1,6 +1,9 @@
 // Construye el XML del e-CF según los XSD oficiales de la DGII
-// Revisado contra cada XSD: e-CF_31 a e-CF_47 + RFCE
-// Soporta: E31, E32, E33, E34, E41, E43, E44, E45, E46, E47
+// Corregido contra XSD e-CF_31..47 + RFCE_32 v1.0
+// Errores corregidos en esta versión:
+//   1. TablaSubDescuento: campo TasaSubDescuento no existe → eliminado cuando no hay descuento
+//   2. ITBIS dentro de <Item>: no existe en el XSD → ITBIS solo va en <Totales>
+//   3. FechaHoraFirma: obligatorio antes del <Signature> en el XSD → se incluye en buildXML
 
 import type { Factura, Cliente, LineaServicio } from "@/types";
 import { calcLinea, calcTotales } from "@/types";
@@ -13,22 +16,28 @@ function getTipoPago(terminos: string): string {
   return terminos === "Contado" ? "1" : "2";
 }
 
-// Normaliza RNC/Cédula → solo dígitos, 9 u 11 chars
-// "1-31217656-6" → "131217656" (9 dígitos, sin dígito verificador)
+// Normaliza RNC → solo dígitos, 9 u 11 chars
 function fmtRNC(rnc: string): string {
   const d = rnc.replace(/\D/g, "");
   if (d.length === 9 || d.length === 11) return d;
-  if (d.length === 10) return d.substring(0, 9); // quitar dígito verificador
+  if (d.length === 10) return d.substring(0, 9);
   return d;
 }
 
-// Convierte YYYY-MM-DD → DD-MM-YYYY (formato DGII)
+// YYYY-MM-DD → DD-MM-YYYY (formato DGII)
 function fmtFecha(fecha: string): string {
   if (!fecha) return "";
   if (/^\d{2}-\d{2}-\d{4}$/.test(fecha)) return fecha;
   const [y, m, d] = fecha.split("-");
   if (y && m && d) return `${d.padStart(2,"0")}-${m.padStart(2,"0")}-${y}`;
   return fecha;
+}
+
+// Genera FechaHoraFirma en formato dd-MM-YYYY HH:mm:ss
+function nowFechaHoraFirma(): string {
+  const n   = new Date();
+  const pad = (x: number) => String(x).padStart(2, "0");
+  return `${pad(n.getDate())}-${pad(n.getMonth()+1)}-${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
 }
 
 function escapeXml(str: string): string {
@@ -47,7 +56,6 @@ interface EmpresaConfig {
 }
 
 // ── Emisor ────────────────────────────────────────────────────────
-// FechaEmision va en <Emisor> como último elemento requerido (XSD)
 function buildEmisor(e: EmpresaConfig, fecha: string): string {
   return `<Emisor>
     <RNCEmisor>${fmtRNC(e.rnc)}</RNCEmisor>
@@ -59,7 +67,6 @@ function buildEmisor(e: EmpresaConfig, fecha: string): string {
   </Emisor>`;
 }
 
-// Emisor simplificado para RFCE (solo RNC y RazonSocial)
 function buildEmisorRFCE(e: EmpresaConfig, fecha: string): string {
   return `<Emisor>
     <RNCEmisor>${fmtRNC(e.rnc)}</RNCEmisor>
@@ -69,7 +76,6 @@ function buildEmisorRFCE(e: EmpresaConfig, fecha: string): string {
 }
 
 // ── IdDoc por tipo ────────────────────────────────────────────────
-// E31, E32, E44, E45, E46 → TipoIngresos REQUERIDO
 function idDocConIngresos(f: Factura, tipo: string): string {
   return `<IdDoc>
     <TipoeCF>${tipo}</TipoeCF>
@@ -80,7 +86,6 @@ function idDocConIngresos(f: Factura, tipo: string): string {
   </IdDoc>`;
 }
 
-// E41 → sin TipoIngresos, TipoPago opcional
 function idDocE41(f: Factura): string {
   return `<IdDoc>
     <TipoeCF>41</TipoeCF>
@@ -89,7 +94,6 @@ function idDocE41(f: Factura): string {
   </IdDoc>`;
 }
 
-// E33 → TipoIngresos opcional
 function idDocE33(f: Factura): string {
   return `<IdDoc>
     <TipoeCF>33</TipoeCF>
@@ -100,7 +104,6 @@ function idDocE33(f: Factura): string {
   </IdDoc>`;
 }
 
-// E34 → sin TipoIngresos
 function idDocE34(f: Factura): string {
   return `<IdDoc>
     <TipoeCF>34</TipoeCF>
@@ -110,7 +113,6 @@ function idDocE34(f: Factura): string {
   </IdDoc>`;
 }
 
-// E43 → sin TipoIngresos, sin TipoPago requerido
 function idDocE43(f: Factura): string {
   return `<IdDoc>
     <TipoeCF>43</TipoeCF>
@@ -119,7 +121,6 @@ function idDocE43(f: Factura): string {
   </IdDoc>`;
 }
 
-// E47 → sin TipoIngresos
 function idDocE47(f: Factura): string {
   return `<IdDoc>
     <TipoeCF>47</TipoeCF>
@@ -151,42 +152,51 @@ function compradorExtranjero(f: Factura): string {
 }
 
 // ── Items ─────────────────────────────────────────────────────────
+// CORRECCIÓN: Se eliminó <ITBIS> y <BienOServExentoITBIS> — no existen en Item del XSD.
+//             El ITBIS va ÚNICAMENTE en <Totales>.
+//             Se eliminó <TablaSubDescuento> vacía con campo inexistente TasaSubDescuento.
+//             Orden correcto según XSD:
+//             NumeroLinea → IndicadorFacturacion → NombreItem → IndicadorBienoServicio →
+//             DescripcionItem? → CantidadItem → UnidadMedida? → PrecioUnitarioItem →
+//             DescuentoMonto? → MontoItem
 function buildItems(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
     const paxDesc = item.pax > 0 ? ` | PAX: ${item.pax}` : "";
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo" ? (c.bruto / Math.max(item.pax, 1)) : item.precio;
+    const precioU = item.modo === "por_grupo"
+      ? (c.bruto / Math.max(item.pax, 1))
+      : item.precio;
+    const descLarga = item.descripcion.length > 80 || paxDesc;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
       <IndicadorFacturacion>1</IndicadorFacturacion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
-      ${(item.descripcion.length > 80 || paxDesc) ? `<DescripcionItem>${escapeXml((item.descripcion + paxDesc).substring(0, 1000))}</DescripcionItem>` : ""}
+      ${descLarga ? `<DescripcionItem>${escapeXml((item.descripcion + paxDesc).substring(0, 1000))}</DescripcionItem>` : ""}
       <CantidadItem>${fmt(cant)}</CantidadItem>
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
       ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
-      <TablaSubDescuento><SubDescuento><TasaSubDescuento>0.00</TasaSubDescuento><MontoSubDescuento>0.00</MontoSubDescuento></SubDescuento></TablaSubDescuento>
       <MontoItem>${fmt(c.sub)}</MontoItem>
-      ${item.itbis === 0 ? `<BienOServExentoITBIS>E</BienOServExentoITBIS>` : `<ITBIS>${fmt(c.itbisAmt)}</ITBIS>`}
     </Item>`;
   }).join("\n");
 }
 
-// E41 — Retencion requerida con IndicadorAgenteRetencionoPercepcion
+// E41 — Retencion con IndicadorAgenteRetencionoPercepcion
 function buildItemsE41(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo" ? (c.bruto / Math.max(item.pax, 1)) : item.precio;
-    const itbisRetenido = fmt(c.itbisAmt);
+    const precioU = item.modo === "por_grupo"
+      ? (c.bruto / Math.max(item.pax, 1))
+      : item.precio;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
       <IndicadorFacturacion>1</IndicadorFacturacion>
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
-        <MontoITBISRetenido>${itbisRetenido}</MontoITBISRetenido>
+        <MontoITBISRetenido>${fmt(c.itbisAmt)}</MontoITBISRetenido>
       </Retencion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
@@ -194,17 +204,18 @@ function buildItemsE41(items: LineaServicio[]): string {
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
       <MontoItem>${fmt(c.sub)}</MontoItem>
-      <ITBIS>${fmt(c.itbisAmt)}</ITBIS>
     </Item>`;
   }).join("\n");
 }
 
-// E47 — Retencion con ISR retenido
+// E47 — Retencion con ISR retenido (27%)
 function buildItemsE47(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo" ? (c.bruto / Math.max(item.pax, 1)) : item.precio;
+    const precioU = item.modo === "por_grupo"
+      ? (c.bruto / Math.max(item.pax, 1))
+      : item.precio;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
       <IndicadorFacturacion>1</IndicadorFacturacion>
@@ -229,7 +240,6 @@ function totalesGravados(f: Factura): string {
   const t      = calcTotales(f.items);
   const exentos = f.items.filter(i => i.itbis === 0).reduce((s, i) => s + calcLinea(i).sub, 0);
   const grav   = t.sub - exentos;
-  // ITBIS1 = tasa como entero (18), TotalITBIS1 = monto — ambos según ejemplo DGII real
   return `<Totales>
     <MontoGravadoTotal>${fmt(grav)}</MontoGravadoTotal>
     <MontoGravadoI1>${fmt(grav)}</MontoGravadoI1>
@@ -257,7 +267,7 @@ function totalesE41(f: Factura): string {
   </Totales>`;
 }
 
-// E43 — gastos menores (solo MontoExento + MontoTotal)
+// E43 — gastos menores
 function totalesE43(f: Factura): string {
   const t = calcTotales(f.items);
   return `<Totales>
@@ -266,7 +276,7 @@ function totalesE43(f: Factura): string {
   </Totales>`;
 }
 
-// E44 — regímenes especiales (exento de ITBIS, solo total)
+// E44 — regímenes especiales (exento)
 function totalesE44(f: Factura): string {
   const t = calcTotales(f.items);
   return `<Totales>
@@ -275,7 +285,7 @@ function totalesE44(f: Factura): string {
   </Totales>`;
 }
 
-// E46 — exportaciones (exentas, MontoGravadoI3 para tasa 0%)
+// E46 — exportaciones (exentas)
 function totalesE46(f: Factura): string {
   const t = calcTotales(f.items);
   return `<Totales>
@@ -286,28 +296,31 @@ function totalesE46(f: Factura): string {
 
 // E47 — pagos al exterior (exentos + ISR retenido)
 function totalesE47(f: Factura): string {
-  const t        = calcTotales(f.items);
-  const isrTotal = t.sub * 0.27;
+  const t = calcTotales(f.items);
   return `<Totales>
     <MontoExento>${fmt(t.sub)}</MontoExento>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
-    <TotalISRRetencion>${fmt(isrTotal)}</TotalISRRetencion>
+    <TotalISRRetencion>${fmt(t.sub * 0.27)}</TotalISRRetencion>
   </Totales>`;
 }
 
-// ── InformacionReferencia ─────────────────────────────────────────
+// ── InformacionReferencia (E33/E34) ───────────────────────────────
+// XSD E33: NCFModificado(1) → FechaNCFModificado(1) → CodigoModificacion(1) → RazonModificacion(0)
 function infoRef(f: Factura, codMod: string): string {
   return `<InformacionReferencia>
     <NCFModificado>${f.eCFRef ?? ""}</NCFModificado>
     <FechaNCFModificado>${fmtFecha(f.fecha)}</FechaNCFModificado>
     <CodigoModificacion>${codMod}</CodigoModificacion>
-    ${f.motivoNota ? `<RazonModificacion>${escapeXml(f.motivoNota)}</RazonModificacion>` : ""}
+    ${f.motivoNota ? `<RazonModificacion>${escapeXml(f.motivoNota.substring(0, 90))}</RazonModificacion>` : ""}
   </InformacionReferencia>`;
 }
 
 // ── CONSTRUCTORES POR TIPO ────────────────────────────────────────
+// CORRECCIÓN: Todos incluyen <FechaHoraFirma> al final, obligatorio según XSD.
+// El xml-signer.ts inserta el bloque <Signature> antes del </ECF> de cierre,
+// lo que lo coloca correctamente DESPUÉS de FechaHoraFirma.
 
-function buildE31(f: Factura, c: Cliente, e: EmpresaConfig): string {
+function buildE31(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -320,10 +333,11 @@ function buildE31(f: Factura, c: Cliente, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE32(f: Factura, e: EmpresaConfig): string {
+function buildE32(f: Factura, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -336,10 +350,11 @@ function buildE32(f: Factura, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
+function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
@@ -354,10 +369,11 @@ function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string 
     ${buildItems(f.items)}
   </DetallesItems>
   ${infoRef(f, "3")}
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
+function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
@@ -372,10 +388,11 @@ function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string 
     ${buildItems(f.items)}
   </DetallesItems>
   ${infoRef(f, "2")}
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
+function buildE41(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -388,10 +405,11 @@ function buildE41(f: Factura, c: Cliente, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItemsE41(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE43(f: Factura, e: EmpresaConfig): string {
+function buildE43(f: Factura, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -403,10 +421,11 @@ function buildE43(f: Factura, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
+function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
@@ -420,10 +439,11 @@ function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string 
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE45(f: Factura, c: Cliente, e: EmpresaConfig): string {
+function buildE45(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -436,18 +456,14 @@ function buildE45(f: Factura, c: Cliente, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string {
-  let comp: string;
-  if (f.idTransaccion) {
-    comp = compradorExtranjero(f);
-  } else if (c) {
-    comp = compradorB2B(c);
-  } else {
-    comp = compradorConsumidor(f);
-  }
+function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
+  const comp = f.idTransaccion
+    ? compradorExtranjero(f)
+    : c ? compradorB2B(c) : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -460,10 +476,11 @@ function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig): string 
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE47(f: Factura, e: EmpresaConfig): string {
+function buildE47(f: Factura, e: EmpresaConfig, fh: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
@@ -476,12 +493,11 @@ function buildE47(f: Factura, e: EmpresaConfig): string {
   <DetallesItems>
     ${buildItemsE47(f.items)}
   </DetallesItems>
+  <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
 // ── RFCE — Resumen E32 < RD$250,000 ──────────────────────────────
-// Estructura según XSD RFCE_32_v_1_0:
-// IdDoc (sin FechaVencimientoSecuencia) → Emisor → Comprador → Totales
 function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = ""): string {
   const t       = calcTotales(f.items);
   const exentos = f.items.filter(i => i.itbis === 0).reduce((s, i) => s + calcLinea(i).sub, 0);
@@ -514,18 +530,20 @@ function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = ""): 
 }
 
 // ── EXPORTACIÓN PRINCIPAL ─────────────────────────────────────────
+
 export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: EmpresaConfig): string {
+  const fh = nowFechaHoraFirma();
   switch (f.tipoECF) {
-    case "E31": return buildE31(f, cliente!, empresa);
-    case "E32": return buildE32(f, empresa);
-    case "E33": return buildE33(f, cliente, empresa);
-    case "E34": return buildE34(f, cliente, empresa);
-    case "E41": return buildE41(f, cliente!, empresa);
-    case "E43": return buildE43(f, empresa);
-    case "E44": return buildE44(f, cliente, empresa);
-    case "E45": return buildE45(f, cliente!, empresa);
-    case "E46": return buildE46(f, cliente, empresa);
-    case "E47": return buildE47(f, empresa);
+    case "E31": return buildE31(f, cliente!, empresa, fh);
+    case "E32": return buildE32(f, empresa, fh);
+    case "E33": return buildE33(f, cliente, empresa, fh);
+    case "E34": return buildE34(f, cliente, empresa, fh);
+    case "E41": return buildE41(f, cliente!, empresa, fh);
+    case "E43": return buildE43(f, empresa, fh);
+    case "E44": return buildE44(f, cliente, empresa, fh);
+    case "E45": return buildE45(f, cliente!, empresa, fh);
+    case "E46": return buildE46(f, cliente, empresa, fh);
+    case "E47": return buildE47(f, empresa, fh);
     default:    throw new Error(`Tipo eCF no soportado: ${f.tipoECF}`);
   }
 }
