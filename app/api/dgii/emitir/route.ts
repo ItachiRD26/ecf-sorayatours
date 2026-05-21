@@ -69,6 +69,18 @@ export async function POST(req: NextRequest) {
     const totales = calcTotales(factura.items);
     const esRFCE  = factura.tipoECF === "E32" && totales.total < LIMITE_RFCE;
 
+    // Validar FechaVencimientoSecuencia — obligatorio en XSD, fallaría si está vacío
+    // El UI guarda YYYY-MM-DD; si llega vacío usamos un fallback razonable
+    if (!factura.vencimientoECF) {
+      // Fallback: 5 años desde hoy para no bloquear el envío
+      const d = new Date();
+      d.setFullYear(d.getFullYear() + 5);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      (factura as unknown as Record<string, unknown>).vencimientoECF =
+        `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+      console.warn("[DGII/emitir] vencimientoECF vacío — usando fallback:", factura.vencimientoECF);
+    }
+
     // 6. Construir + firmar XML principal
     const xmlSinFirma = buildXML(factura, cliente, empresa);
     const xmlFirmado  = await firmarXML(xmlSinFirma);
@@ -91,13 +103,13 @@ export async function POST(req: NextRequest) {
       const codigoSeguridadRFCE = signatureValue.substring(0, 6);
       const rfceXml     = buildRFCEXml(factura, empresa, codigoSeguridadRFCE); // CodigoSeguridadeCF requerido por XSD
       const rfceFirmado = await firmarXML(rfceXml);
-      const resultado   = await enviarRFCE(rfceFirmado, tokenManual);
+      const resultado   = await enviarRFCE(rfceFirmado, tokenManual, factura.eCF);
 
       trackId    = resultado.trackId;
       estadoDGII = resultado.estado || "Enviado"; // "Enviado" mientras se procesa, no "Aceptado"
     } else {
       // Todos los demás tipos: enviar eCF completo
-      trackId    = await enviarECF(xmlFirmado, tokenManual);
+      trackId    = await enviarECF(xmlFirmado, tokenManual, factura.eCF);
       estadoDGII = "Enviado";
     }
 
