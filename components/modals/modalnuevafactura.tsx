@@ -246,7 +246,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     tipoECF:        "E31" as import("@/types").TipoECF,
     clienteId:      "",
     fecha:          today(),
-    vencimientoECF: "2027-12-31",
+    vencimientoECF: "2028-12-31",  // E31 default — DGII certecf autoriza hasta 2028-12-31
     terminos:       "Contado" as typeof TERMINOS_PAGO[number],
     metodoPago:     "Efectivo" as MetodoPago,
     cotizacionRef:  "",
@@ -279,6 +279,12 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
   const t          = calcTotales(items);
   const eCFPreview = genECF(form.tipoECF, facturas.filter((f) => f.tipoECF === form.tipoECF).length + 1);
   const setF       = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
+
+  // FechaVencimientoSecuencia por tipo — debe coincidir con lo autorizado por DGII certecf
+  // E32 tiene vencimiento 2099-12-31 (secuencias de consumo largo plazo)
+  // Todos los demás: 2028-12-31 (según Paso 2 aprobado)
+  const vencimientoPorTipo = (tipo: string): string =>
+    tipo === "E32" ? "2099-12-31" : "2028-12-31";
   const updateItem = (i: number) => <K extends keyof LineaServicio>(k: K, v: LineaServicio[K]) =>
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
 
@@ -347,7 +353,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                       const meta   = TIPOS_ECF.find((t) => t.codigo === codigo);
                       const activo = form.tipoECF === codigo;
                       return (
-                        <button key={codigo} type="button" onClick={() => setF("tipoECF", codigo)}
+                        <button key={codigo} type="button" onClick={() => setForm((p) => ({ ...p, tipoECF: codigo, vencimientoECF: vencimientoPorTipo(codigo) }))}
                           style={{ flex: 1, padding: "7px 8px", textAlign: "center", border: "2px solid " + (activo ? "#0e7490" : "#e5e7eb"), borderRadius: 4, cursor: "pointer", background: activo ? "#0e7490" : "#fff", color: activo ? "#fff" : "#374151" }}>
                           <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{codigo}</div>
                           <div style={{ fontSize: 9, color: activo ? "rgba(255,255,255,0.6)" : "#9ca3af", fontFamily: sans }}>{meta?.label.split("---")[1]?.trim()}</div>
