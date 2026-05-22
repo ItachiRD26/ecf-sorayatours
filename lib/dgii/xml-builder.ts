@@ -358,15 +358,17 @@ function buildE31(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string 
 </ECF>`;
 }
 
-function buildE32(f: Factura, e: EmpresaConfig, fh: string): string {
+function buildE32(f: Factura, cliente: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const hasITBIS = calcTotales(f.items).itbis > 0;
+  // E32 >= 250k requiere RNCComprador; E32 < 250k va por RFCE (no llega aquí)
+  const comp = cliente?.rnc ? compradorB2B(cliente) : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
     ${idDocE32(f, hasITBIS)}
     ${buildEmisor(e, f.fecha)}
-    ${compradorConsumidor(f)}
+    ${comp}
     ${totalesGravados(f)}
   </Encabezado>
   <DetallesItems>
@@ -561,7 +563,7 @@ export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: Empr
   const fh = nowFechaHoraFirma();
   switch (f.tipoECF) {
     case "E31": return buildE31(f, cliente!, empresa, fh);
-    case "E32": return buildE32(f, empresa, fh);
+    case "E32": return buildE32(f, cliente, empresa, fh);
     case "E33": return buildE33(f, cliente, empresa, fh);
     case "E34": return buildE34(f, cliente, empresa, fh);
     case "E41": return buildE41(f, cliente!, empresa, fh);
