@@ -76,35 +76,38 @@ function buildEmisorRFCE(e: EmpresaConfig, fecha: string): string {
 }
 
 // ── IdDoc por tipo ────────────────────────────────────────────────
-function idDocConIngresos(f: Factura, tipo: string): string {
+function idDocConIngresos(f: Factura, tipo: string, inclMontoGrav = false): string {
   return `<IdDoc>
     <TipoeCF>${tipo}</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
     <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+    ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
     <TipoIngresos>01</TipoIngresos>
     <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
   </IdDoc>`;
 }
 
-function idDocE41(f: Factura): string {
+function idDocE41(f: Factura, inclMontoGrav = false): string {
   return `<IdDoc>
     <TipoeCF>41</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
     <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+    ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
   </IdDoc>`;
 }
 
-function idDocE33(f: Factura): string {
+function idDocE33(f: Factura, inclMontoGrav = false): string {
   return `<IdDoc>
     <TipoeCF>33</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
     <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+    ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
     <TipoIngresos>01</TipoIngresos>
     <TipoPago>1</TipoPago>
   </IdDoc>`;
 }
 
-function idDocE34(f: Factura): string {
+function idDocE34(f: Factura, inclMontoGrav = false): string {
   // IndicadorNotaCredito: 0 si la fecha de emisión es <= 30 días calendario, 1 si > 30 días
   const parts = fmtFecha(f.fecha).split("-"); // DD-MM-YYYY
   const emision = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
@@ -114,15 +117,17 @@ function idDocE34(f: Factura): string {
     <TipoeCF>34</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
     <IndicadorNotaCredito>${indNotaC}</IndicadorNotaCredito>
+    ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
     <TipoPago>1</TipoPago>
   </IdDoc>`;
 }
 
-function idDocE32(f: Factura): string {
+function idDocE32(f: Factura, inclMontoGrav = false): string {
   // E32 XSD no tiene FechaVencimientoSecuencia
   return `<IdDoc>
     <TipoeCF>32</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
+    ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
     <TipoIngresos>01</TipoIngresos>
     <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
   </IdDoc>`;
@@ -336,11 +341,12 @@ function infoRef(f: Factura, codMod: string): string {
 // lo que lo coloca correctamente DESPUÉS de FechaHoraFirma.
 
 function buildE31(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocConIngresos(f, "31")}
+    ${idDocConIngresos(f, "31", hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${compradorB2B(c)}
     ${totalesGravados(f)}
@@ -353,11 +359,12 @@ function buildE31(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string 
 }
 
 function buildE32(f: Factura, e: EmpresaConfig, fh: string): string {
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocE32(f)}
+    ${idDocE32(f, hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${compradorConsumidor(f)}
     ${totalesGravados(f)}
@@ -371,11 +378,12 @@ function buildE32(f: Factura, e: EmpresaConfig, fh: string): string {
 
 function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocE33(f)}
+    ${idDocE33(f, hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${comp}
     ${totalesGravados(f)}
@@ -390,11 +398,12 @@ function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
 
 function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocE34(f)}
+    ${idDocE34(f, hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${comp}
     ${totalesGravados(f)}
@@ -408,11 +417,12 @@ function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
 }
 
 function buildE41(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocE41(f)}
+    ${idDocE41(f, hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${compradorB2B(c)}
     ${totalesE41(f)}
@@ -459,11 +469,12 @@ function buildE44(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
 }
 
 function buildE45(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string {
+  const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocConIngresos(f, "45")}
+    ${idDocConIngresos(f, "45", hasITBIS)}
     ${buildEmisor(e, f.fecha)}
     ${compradorB2B(c)}
     ${totalesGravados(f)}
