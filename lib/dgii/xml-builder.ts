@@ -105,11 +105,26 @@ function idDocE33(f: Factura): string {
 }
 
 function idDocE34(f: Factura): string {
+  // IndicadorNotaCredito: 0 si la fecha de emisión es <= 30 días calendario, 1 si > 30 días
+  const parts = fmtFecha(f.fecha).split("-"); // DD-MM-YYYY
+  const emision = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+  const diffDays = (Date.now() - emision.getTime()) / 86400000;
+  const indNotaC = diffDays <= 30 ? "0" : "1";
   return `<IdDoc>
     <TipoeCF>34</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
-    <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
+    <IndicadorNotaCredito>${indNotaC}</IndicadorNotaCredito>
     <TipoPago>1</TipoPago>
+  </IdDoc>`;
+}
+
+function idDocE32(f: Factura): string {
+  // E32 XSD no tiene FechaVencimientoSecuencia
+  return `<IdDoc>
+    <TipoeCF>32</TipoeCF>
+    <eNCF>${f.eCF}</eNCF>
+    <TipoIngresos>01</TipoIngresos>
+    <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
   </IdDoc>`;
 }
 
@@ -342,7 +357,7 @@ function buildE32(f: Factura, e: EmpresaConfig, fh: string): string {
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocConIngresos(f, "32")}
+    ${idDocE32(f)}
     ${buildEmisor(e, f.fecha)}
     ${compradorConsumidor(f)}
     ${totalesGravados(f)}

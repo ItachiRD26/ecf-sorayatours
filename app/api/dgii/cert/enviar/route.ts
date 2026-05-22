@@ -122,7 +122,7 @@ export function buildJsonECF(row: Record<string,unknown>, encf: string): Record<
     eNCF: encf,
     ...(tieneFechaVencim && vencim   ? { FechaVencimientoSecuencia: vencim } : {}),
     ...(tieneNotaCredito             ? { IndicadorNotaCredito: indNotaC || "0" } : {}),
-    ...(indMonGr !== ""              ? { IndicadorMontoGravado: indMonGr } : {}),
+    ...(indMonGr === "0" || indMonGr === "1" ? { IndicadorMontoGravado: Number(indMonGr) } : {}),
     ...(tieneIngresos && tipoIngr    ? { TipoIngresos: tipoIngr } : {}),
     ...(tipoPago                     ? { TipoPago: tipoPago } : {}),
     ...(fechaLimP                    ? { FechaLimitePago: fechaLimP } : {}),
