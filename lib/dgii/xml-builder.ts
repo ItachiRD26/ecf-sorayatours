@@ -164,6 +164,20 @@ function compradorConsumidor(f: Factura): string {
   </Comprador>`;
 }
 
+function compradorOcasional(f: Factura): string {
+  const nombre = escapeXml(f.nombreConsumidor ?? "CONSUMIDOR FINAL");
+  if (f.esExtranjeroComprador) {
+    return `<Comprador>
+    <IdentificadorExtranjero>${escapeXml(f.rncCompradorOcasional ?? "")}</IdentificadorExtranjero>
+    <RazonSocialComprador>${nombre}</RazonSocialComprador>
+  </Comprador>`;
+  }
+  return `<Comprador>
+    <RNCComprador>${fmtRNC(f.rncCompradorOcasional ?? "")}</RNCComprador>
+    <RazonSocialComprador>${nombre}</RazonSocialComprador>
+  </Comprador>`;
+}
+
 function compradorExtranjero(f: Factura): string {
   return `<Comprador>
     ${f.idTransaccion ? `<IdentificadorExtranjero>${escapeXml(f.idTransaccion)}</IdentificadorExtranjero>` : ""}
@@ -360,8 +374,12 @@ function buildE31(f: Factura, c: Cliente, e: EmpresaConfig, fh: string): string 
 
 function buildE32(f: Factura, cliente: Cliente | undefined, e: EmpresaConfig, fh: string): string {
   const hasITBIS = calcTotales(f.items).itbis > 0;
-  // E32 >= 250k requiere RNCComprador; E32 < 250k va por RFCE (no llega aquí)
-  const comp = cliente?.rnc ? compradorB2B(cliente) : compradorConsumidor(f);
+  // Prioridad: cliente registrado con RNC > cédula/ID ocasional > consumidor anónimo
+  const comp = cliente?.rnc
+    ? compradorB2B(cliente)
+    : f.rncCompradorOcasional
+      ? compradorOcasional(f)
+      : compradorConsumidor(f);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>

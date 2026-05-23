@@ -257,10 +257,12 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
   const [montoAbonoInicial,  setMontoAbonoInicial]  = useState(0);
   const [metodoAbonoInicial, setMetodoAbonoInicial] = useState<MetodoPago>("Efectivo");
   const [refAbonoInicial,    setRefAbonoInicial]    = useState("");
-  const [showServicios,      setShowServicios]      = useState<number | null>(null);
-  const [showClienteModal,   setShowClienteModal]   = useState(false);
-  const [showConfirmacion,   setShowConfirmacion]   = useState(false);
-  const { mostrar: alertaDuplicado, AlertaUI }      = useAlerta();
+  const [showServicios,        setShowServicios]        = useState<number | null>(null);
+  const [showClienteModal,     setShowClienteModal]     = useState(false);
+  const [showConfirmacion,     setShowConfirmacion]     = useState(false);
+  const [rncOcasional,         setRncOcasional]         = useState("");
+  const [esExtranjeroOcasional,setEsExtranjeroOcasional]= useState(false);
+  const { mostrar: alertaDuplicado, AlertaUI }          = useAlerta();
 
   const clienteSeleccionado = clientes.find((c) => c.id === form.clienteId);
   const ecfConfig           = resolverECFConfig(esWalkIn ? undefined : clienteSeleccionado, esWalkIn);
@@ -280,6 +282,12 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
   const eCFPreview = genECF(form.tipoECF, facturas.filter((f) => f.tipoECF === form.tipoECF).length + 1);
   const setF       = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
 
+  // E32 >= 250k sin RNC registrado → exigir cédula/RNC en el momento
+  const necesitaIdentificacion =
+    form.tipoECF === "E32" &&
+    t.total >= 250_000 &&
+    !clienteSeleccionado?.rnc?.trim();
+
   // FechaVencimientoSecuencia por tipo — debe coincidir con lo autorizado por DGII certecf
   // E32 tiene vencimiento 2099-12-31 (secuencias de consumo largo plazo)
   // Todos los demás: 2028-12-31 (según Paso 2 aprobado)
@@ -294,6 +302,11 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     if (esWalkIn && !nombreWalkIn.trim())   return alert("El nombre del cliente es obligatorio");
     if (items.every((i) => !i.descripcion)) return alert("Agrega al menos un servicio");
     if (requiereReferencia && !referencia.trim()) return alert("Ingresa el " + refConfig?.label);
+    if (necesitaIdentificacion && !rncOcasional.trim())
+      return alert("E32 ≥ RD$250,000 requiere cédula o RNC del comprador");
+    const digits = rncOcasional.replace(/\D/g, "");
+    if (necesitaIdentificacion && !esExtranjeroOcasional && digits.length !== 9 && digits.length !== 11)
+      return alert("La cédula debe tener 11 dígitos y el RNC empresarial 9 dígitos");
     setShowConfirmacion(true);
   };
 
@@ -317,6 +330,8 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
       esConsumidorFinal: esWalkIn,
       nombreConsumidor:  esWalkIn ? (nombreWalkIn || "Consumidor Final") : undefined,
       telefonoConsumidor: esWalkIn ? (telefonoWalkIn || undefined) : undefined,
+      rncCompradorOcasional: (necesitaIdentificacion && rncOcasional.trim()) ? rncOcasional.trim() : undefined,
+      esExtranjeroComprador: (necesitaIdentificacion && esExtranjeroOcasional) ? true : undefined,
       items: items.filter((i) => i.descripcion),
       notas: notas || undefined,
       abonoInicialMonto:  (!esContado && tieneAbonoInicial && montoAbonoInicial > 0) ? montoAbonoInicial  : undefined,
@@ -415,6 +430,41 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                 </>
               )}
             </div>
+
+            {/* Identificacion comprador E32 >= 250k */}
+            {necesitaIdentificacion && (
+              <div style={{ background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 6, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: sans }}>
+                  ⚠ Identificación requerida — E32 ≥ RD$250,000
+                </div>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginBottom: 8 }}>
+                  <input type="checkbox" checked={esExtranjeroOcasional}
+                    onChange={(e) => { setEsExtranjeroOcasional(e.target.checked); setRncOcasional(""); }} />
+                  <span style={{ fontSize: 12, color: "#374151", fontFamily: sans }}>Comprador extranjero / diplomático</span>
+                </label>
+                <label style={{ ...labelStyle, fontSize: 10 }}>
+                  {esExtranjeroOcasional ? "Identificador Extranjero" : "Cédula (11 díg.) o RNC (9 díg.)"}
+                  <span style={{ color: "#dc2626" }}> *</span>
+                </label>
+                <input
+                  style={{ ...inputStyle, fontSize: 13, fontFamily: mono, borderColor: "#f59e0b" }}
+                  placeholder={esExtranjeroOcasional ? "Ej: P0012345678" : "Ej: 40212345678"}
+                  value={rncOcasional}
+                  maxLength={esExtranjeroOcasional ? 20 : 11}
+                  onChange={(e) => {
+                    const v = esExtranjeroOcasional
+                      ? e.target.value
+                      : e.target.value.replace(/\D/g, "").slice(0, 11);
+                    setRncOcasional(v);
+                  }}
+                />
+                <div style={{ fontSize: 10, color: "#92400e", marginTop: 4, fontFamily: sans }}>
+                  {esExtranjeroOcasional
+                    ? "Pasaporte, documento diplomático u otro identificador."
+                    : "Cédula dominicana de 11 dígitos o RNC empresarial de 9 dígitos."}
+                </div>
+              </div>
+            )}
 
             {/* Pago */}
             <div>

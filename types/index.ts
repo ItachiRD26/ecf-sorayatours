@@ -191,6 +191,9 @@ export interface Factura {
   creadoPor?:            string;
   modalidadPago?:        "unico" | "plazo";
   fechaVencimientoPago?: string;
+  // ── Identificación comprador ocasional E32 >= 250k ──
+  rncCompradorOcasional?:  string;   // cédula (11 dígitos) o RNC (9 dígitos)
+  esExtranjeroComprador?:  boolean;  // true → va en IdentificadorExtranjero
   // ── Campos DGII (se llenan al emitir) ──
   estadoDGII?:           "pendiente" | "Enviado" | "Aceptado" | "AceptadoCondicional" | "Rechazado" | "Anulada";
   trackIdDGII?:          string;
