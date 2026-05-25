@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, runTransaction } from "firebase/firestore";
 import { db }       from "@/lib/firebase";
 import { useAuth }  from "@/contexts/AuthContext";
 import Icon         from "@/components/ui/icon";
+import type { TipoECF } from "@/types";
 
 const sans  = "var(--font-sans)";
 const serif = "var(--font-serif)";
@@ -46,6 +47,8 @@ function Seccion({ titulo, children }: { titulo: string; children: React.ReactNo
   );
 }
 
+const ECF_TIPOS: TipoECF[] = ["E31","E32","E33","E34","E41","E43","E44","E45","E46","E47"];
+
 export default function ConfiguracionPage() {
   const { perfil }                  = useAuth();
   const [config,   setConfig]       = useState<EmpresaConfig>(DEFAULTS);
@@ -54,11 +57,61 @@ export default function ConfiguracionPage() {
   const [saved,    setSaved]        = useState(false);
   const [showWarn, setShowWarn]     = useState(false);
 
+  // Sequence management state
+  const [seqs,      setSeqs]        = useState<Record<string, number>>({});
+  const [seqInputs, setSeqInputs]   = useState<Record<string, string>>({});
+  const [seqSaving, setSeqSaving]   = useState<Record<string, boolean>>({});
+  const [seqSaved,  setSeqSaved]    = useState<Record<string, boolean>>({});
+  const [seqError,  setSeqError]    = useState<Record<string, string>>({});
+
   useEffect(() => {
     getDoc(doc(db, "config", "empresa")).then((snap) => {
       if (snap.exists()) setConfig({ ...DEFAULTS, ...snap.data() as EmpresaConfig });
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    getDoc(doc(db, "config", "secuencias")).then((snap) => {
+      const data = snap.exists() ? (snap.data() as Record<string, number>) : {};
+      setSeqs(data);
+      const inputs: Record<string, string> = {};
+      ECF_TIPOS.forEach((t) => { inputs[t] = String(data[t] ?? 0); });
+      setSeqInputs(inputs);
+    });
+  }, []);
+
+  const handleSeqSave = async (tipo: TipoECF) => {
+    const val = parseInt(seqInputs[tipo] ?? "0", 10);
+    if (isNaN(val) || val < 0) {
+      setSeqError((p) => ({ ...p, [tipo]: "Valor inválido" }));
+      return;
+    }
+    const current = seqs[tipo] ?? 0;
+    if (val < current) {
+      setSeqError((p) => ({ ...p, [tipo]: `No puede retroceder (actual: ${current})` }));
+      return;
+    }
+    setSeqError((p) => ({ ...p, [tipo]: "" }));
+    setSeqSaving((p) => ({ ...p, [tipo]: true }));
+    try {
+      await runTransaction(db, async (tx) => {
+        const ref  = doc(db, "config", "secuencias");
+        const snap = await tx.get(ref);
+        const data = snap.exists() ? (snap.data() as Record<string, number>) : {};
+        const live = data[tipo] ?? 0;
+        if (val < live) throw new Error(`Conflicto: el valor actual ya es ${live}`);
+        tx.set(ref, { [tipo]: val }, { merge: true });
+      });
+      setSeqs((p) => ({ ...p, [tipo]: val }));
+      setSeqSaved((p) => ({ ...p, [tipo]: true }));
+      setTimeout(() => setSeqSaved((p) => ({ ...p, [tipo]: false })), 2500);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Error al guardar";
+      setSeqError((p) => ({ ...p, [tipo]: msg }));
+    } finally {
+      setSeqSaving((p) => ({ ...p, [tipo]: false }));
+    }
+  };
 
   const set = <K extends keyof EmpresaConfig>(k: K, v: string) => setConfig((p) => ({ ...p, [k]: v }));
   const f   = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => { e.currentTarget.style.borderColor = "#111"; };
@@ -181,6 +234,55 @@ export default function ConfiguracionPage() {
           )}
         </div>
       </form>
+
+      {/* Secuencias e-CF */}
+      {perfil?.rol === "admin" && (
+        <Seccion titulo="Secuencias e-CF (Numeración)">
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, padding: "10px 14px", marginBottom: 18, fontSize: 12, color: "#92400e", fontFamily: sans, lineHeight: 1.6 }}>
+            ⚠ Estos contadores determinan el próximo número de secuencia (eNCF) para cada tipo de comprobante. Solo puedes <strong>avanzar</strong> el contador, nunca retrocederlo. Úsalo para saltar números ya utilizados en intentos anteriores de certificación.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}>
+            {ECF_TIPOS.map((tipo) => {
+              const current = seqs[tipo] ?? 0;
+              const inputVal = seqInputs[tipo] ?? String(current);
+              const isSaving = seqSaving[tipo] ?? false;
+              const isSaved  = seqSaved[tipo]  ?? false;
+              const err      = seqError[tipo]  ?? "";
+              return (
+                <div key={tipo} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 4, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#111", fontFamily: mono }}>{tipo}</span>
+                    <span style={{ fontSize: 10, color: "#6b7280", fontFamily: sans }}>actual: <strong>{current}</strong></span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input
+                      type="number" min={current} step={1}
+                      style={{ ...inputStyle, fontFamily: mono, flex: 1, padding: "6px 8px", borderColor: err ? "#ef4444" : "#d1d5db" }}
+                      value={inputVal}
+                      onChange={(e) => {
+                        setSeqInputs((p) => ({ ...p, [tipo]: e.target.value }));
+                        setSeqError((p) => ({ ...p, [tipo]: "" }));
+                      }}
+                    />
+                    <button
+                      onClick={() => handleSeqSave(tipo)}
+                      disabled={isSaving || String(current) === inputVal}
+                      style={{
+                        padding: "6px 10px", fontSize: 12, border: "none", borderRadius: 4, cursor: (isSaving || String(current) === inputVal) ? "not-allowed" : "pointer",
+                        background: isSaved ? "#166534" : (isSaving || String(current) === inputVal) ? "#d1d5db" : "#111",
+                        color: "#fff", fontFamily: sans, whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isSaved ? "✓" : isSaving ? "..." : "Guardar"}
+                    </button>
+                  </div>
+                  {err && <div style={{ fontSize: 10, color: "#ef4444", marginTop: 4, fontFamily: sans }}>{err}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </Seccion>
+      )}
 
       {/* Confirmación */}
       {showWarn && (
