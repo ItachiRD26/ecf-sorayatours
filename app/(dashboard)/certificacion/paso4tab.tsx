@@ -66,11 +66,28 @@ const colorEstado = (est?: string) => {
   return m[est] ?? m.Enviado;
 };
 
+const hoy = () => new Date().toISOString().split("T")[0];
+
+interface E41Form {
+  rncProveedor: string; nombreProveedor: string; descripcion: string;
+  montoSub: string; itbisRate: string; fecha: string;
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 export default function Paso4Tab({ token }: { token: string }) {
   const [facturas,   setFacturas]   = useState<Factura[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [expandido,  setExpandido]  = useState<string | null>(null);
+
+  // E41 modal
+  const [showE41,    setShowE41]    = useState(false);
+  const [e41Form,    setE41Form]    = useState<E41Form>({
+    rncProveedor: "", nombreProveedor: "", descripcion: "",
+    montoSub: "", itbisRate: "0.18", fecha: hoy(),
+  });
+  const [e41Sending, setE41Sending] = useState(false);
+  const [e41Result,  setE41Result]  = useState<{ eCF: string; trackId: string } | null>(null);
+  const [e41Error,   setE41Error]   = useState("");
 
   // Suscribir a facturas en tiempo real
   useEffect(() => {
@@ -81,6 +98,42 @@ export default function Paso4Tab({ token }: { token: string }) {
     });
     return () => unsub();
   }, []);
+
+  const setE41Field = (k: keyof E41Form, v: string) => setE41Form(p => ({ ...p, [k]: v }));
+
+  const handleCreateE41 = async () => {
+    const rnc = e41Form.rncProveedor.replace(/\D/g, "");
+    if (rnc.length !== 9 && rnc.length !== 11) { setE41Error("RNC debe tener 9 u 11 dígitos"); return; }
+    if (!e41Form.nombreProveedor.trim())         { setE41Error("Nombre del proveedor requerido"); return; }
+    if (!e41Form.descripcion.trim())             { setE41Error("Descripción requerida"); return; }
+    if (!e41Form.montoSub || Number(e41Form.montoSub) <= 0) { setE41Error("Monto debe ser mayor a 0"); return; }
+    if (!token) { setE41Error("Necesitas el token activo (Paso 2 → Pasos 1-3)"); return; }
+    setE41Sending(true);
+    setE41Error("");
+    setE41Result(null);
+    try {
+      const res  = await fetch("/api/dgii/cert/crear-e41", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          rncProveedor:    rnc,
+          nombreProveedor: e41Form.nombreProveedor.trim(),
+          descripcion:     e41Form.descripcion.trim(),
+          montoSub:        parseFloat(e41Form.montoSub),
+          itbisRate:       parseFloat(e41Form.itbisRate),
+          fecha:           e41Form.fecha,
+          token,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setE41Result({ eCF: data.eCF, trackId: data.trackId });
+    } catch (e: unknown) {
+      setE41Error(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setE41Sending(false);
+    }
+  };
 
   // Agrupar facturas enviadas (estadoDGII ≠ undefined y ≠ pendiente) por req
   const facturasPorReq = (req: Req): Factura[] =>
@@ -192,17 +245,31 @@ export default function Paso4Tab({ token }: { token: string }) {
                   <div style={{ borderTop:"1px solid #f3f4f6", padding:"14px 16px" }}>
                     {/* Botón crear */}
                     <div style={{ marginBottom:12, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-                      <Link
-                        href={`/facturas?tipo=${req.tipoECF}`}
-                        style={{
-                          display:"inline-flex", alignItems:"center", gap:6,
-                          padding:"7px 14px", background:req.color, color:"#fff",
-                          borderRadius:4, fontSize:12, fontFamily:sans, fontWeight:600,
-                          textDecoration:"none",
-                        }}
-                      >
-                        + Crear {req.tipoECF}{req.esRFCE ? " <250k" : ""}
-                      </Link>
+                      {req.tipo === "E41" ? (
+                        <button
+                          onClick={() => { setShowE41(true); setE41Result(null); setE41Error(""); }}
+                          style={{
+                            display:"inline-flex", alignItems:"center", gap:6,
+                            padding:"7px 14px", background:req.color, color:"#fff",
+                            borderRadius:4, fontSize:12, fontFamily:sans, fontWeight:600,
+                            border:"none", cursor:"pointer",
+                          }}
+                        >
+                          + Crear E41
+                        </button>
+                      ) : (
+                        <Link
+                          href={`/facturas?tipo=${req.tipoECF}`}
+                          style={{
+                            display:"inline-flex", alignItems:"center", gap:6,
+                            padding:"7px 14px", background:req.color, color:"#fff",
+                            borderRadius:4, fontSize:12, fontFamily:sans, fontWeight:600,
+                            textDecoration:"none",
+                          }}
+                        >
+                          + Crear {req.tipoECF}{req.esRFCE ? " <250k" : ""}
+                        </Link>
+                      )}
                       {req.esRFCE && (
                         <span style={{ fontSize:11, color:"#6b7280", fontFamily:sans }}>
                           El monto debe ser menor a RD$250,000 — el sistema enviará automáticamente como RFCE
@@ -306,6 +373,160 @@ export default function Paso4Tab({ token }: { token: string }) {
           ✓ Secuencias NO reutilizables: si falla y se reinicia, el número anterior queda inválido
         </div>
       </div>
+
+      {/* ── Modal E41 ─────────────────────────────────────────────────────── */}
+      {showE41 && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ background:"#fff", borderRadius:8, maxWidth:500, width:"100%", boxShadow:"0 24px 64px rgba(0,0,0,0.2)", overflow:"hidden" }}>
+
+            {/* Header */}
+            <div style={{ padding:"16px 22px", borderBottom:"1px solid #e5e7eb", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <span style={{ fontSize:11, padding:"2px 7px", borderRadius:3, fontWeight:700, fontFamily:mono, background:"#05996915", color:"#059669", border:"1px solid #05996930", marginRight:8 }}>E41</span>
+                <span style={{ fontSize:15, fontWeight:600, color:"#111", fontFamily:sans }}>Comprobante de Compras</span>
+              </div>
+              <button onClick={() => setShowE41(false)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:"#9ca3af", lineHeight:1 }}>×</button>
+            </div>
+
+            {/* Nota */}
+            <div style={{ padding:"12px 22px 0", fontFamily:sans }}>
+              <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:4, padding:"8px 12px", fontSize:12, color:"#166534", lineHeight:1.6 }}>
+                Emite este comprobante cuando compraste un servicio o producto a un proveedor que no pudo emitir su propia factura. El ITBIS lo retienes tú y lo enteras a la DGII.
+              </div>
+            </div>
+
+            {/* Form */}
+            <div style={{ padding:"16px 22px", display:"flex", flexDirection:"column", gap:14 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>RNC / Cédula Proveedor</label>
+                  <input
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                    placeholder="131880681"
+                    value={e41Form.rncProveedor}
+                    onChange={e => setE41Field("rncProveedor", e.target.value)}
+                    maxLength={11}
+                  />
+                </div>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Fecha</label>
+                  <input
+                    type="date"
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                    value={e41Form.fecha}
+                    onChange={e => setE41Field("fecha", e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Nombre del Proveedor</label>
+                <input
+                  style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", boxSizing:"border-box" }}
+                  placeholder="Proveedor de servicios SRL"
+                  value={e41Form.nombreProveedor}
+                  onChange={e => setE41Field("nombreProveedor", e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Descripción del Servicio / Compra</label>
+                <input
+                  style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", boxSizing:"border-box" }}
+                  placeholder="Servicio de mantenimiento de embarcación"
+                  value={e41Form.descripcion}
+                  onChange={e => setE41Field("descripcion", e.target.value)}
+                  maxLength={80}
+                />
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Monto Subtotal (RD$)</label>
+                  <input
+                    type="number" min="1" step="0.01"
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                    placeholder="10000.00"
+                    value={e41Form.montoSub}
+                    onChange={e => setE41Field("montoSub", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>ITBIS a Retener</label>
+                  <select
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", background:"#fff", boxSizing:"border-box" }}
+                    value={e41Form.itbisRate}
+                    onChange={e => setE41Field("itbisRate", e.target.value)}
+                  >
+                    <option value="0">Exento (0%)</option>
+                    <option value="0.16">16%</option>
+                    <option value="0.18">18%</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview monto */}
+              {e41Form.montoSub && Number(e41Form.montoSub) > 0 && (
+                <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:4, padding:"10px 14px", display:"flex", justifyContent:"space-between", fontFamily:mono, fontSize:12 }}>
+                  <span style={{ color:"#6b7280" }}>Subtotal</span>
+                  <span>RD${Number(e41Form.montoSub).toLocaleString("es-DO", { minimumFractionDigits:2 })}</span>
+                  <span style={{ color:"#6b7280" }}>ITBIS ret.</span>
+                  <span style={{ color:"#dc2626" }}>RD${(Number(e41Form.montoSub) * Number(e41Form.itbisRate)).toLocaleString("es-DO", { minimumFractionDigits:2 })}</span>
+                  <span style={{ fontWeight:700, color:"#111" }}>Total: RD${(Number(e41Form.montoSub) * (1 + Number(e41Form.itbisRate))).toLocaleString("es-DO", { minimumFractionDigits:2 })}</span>
+                </div>
+              )}
+
+              {/* Error */}
+              {e41Error && (
+                <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:4, padding:"8px 12px", fontSize:12, color:"#991b1b", fontFamily:sans }}>
+                  {e41Error}
+                </div>
+              )}
+
+              {/* Resultado exitoso */}
+              {e41Result && (
+                <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:4, padding:"10px 14px", fontFamily:sans, fontSize:12, color:"#166534" }}>
+                  <div style={{ fontWeight:700, marginBottom:4 }}>✅ E41 emitido y enviado a DGII</div>
+                  <div style={{ fontFamily:mono }}>eNCF: {e41Result.eCF}</div>
+                  <div style={{ fontFamily:mono, marginTop:2 }}>trackId: {e41Result.trackId}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:"12px 22px 18px", display:"flex", gap:8, justifyContent:"flex-end", borderTop:"1px solid #f3f4f6" }}>
+              <button
+                onClick={() => setShowE41(false)}
+                style={{ padding:"8px 16px", background:"#fff", border:"1px solid #d1d5db", borderRadius:4, cursor:"pointer", fontSize:13, fontFamily:sans, color:"#374151" }}
+              >
+                {e41Result ? "Cerrar" : "Cancelar"}
+              </button>
+              {!e41Result && (
+                <button
+                  onClick={handleCreateE41}
+                  disabled={e41Sending}
+                  style={{
+                    padding:"8px 20px", background: e41Sending ? "#d1d5db" : "#059669",
+                    border:"none", borderRadius:4, cursor: e41Sending ? "not-allowed" : "pointer",
+                    fontSize:13, fontFamily:sans, color:"#fff", fontWeight:600,
+                  }}
+                >
+                  {e41Sending ? "Emitiendo…" : "Emitir E41"}
+                </button>
+              )}
+              {e41Result && (
+                <button
+                  onClick={() => { setE41Form({ rncProveedor:"", nombreProveedor:"", descripcion:"", montoSub:"", itbisRate:"0.18", fecha:hoy() }); setE41Result(null); setE41Error(""); }}
+                  style={{ padding:"8px 20px", background:"#059669", border:"none", borderRadius:4, cursor:"pointer", fontSize:13, fontFamily:sans, color:"#fff", fontWeight:600 }}
+                >
+                  + Crear otro E41
+                </button>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
     </div>
   );
 }
