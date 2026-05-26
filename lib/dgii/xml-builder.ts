@@ -93,6 +93,7 @@ function idDocE41(f: Factura, inclMontoGrav = false): string {
     <eNCF>${f.eCF}</eNCF>
     <FechaVencimientoSecuencia>${fmtFecha(f.vencimientoECF)}</FechaVencimientoSecuencia>
     ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
+    <TipoPago>${getTipoPago(f.terminos)}</TipoPago>
   </IdDoc>`;
 }
 
