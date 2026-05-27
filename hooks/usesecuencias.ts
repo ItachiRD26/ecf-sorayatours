@@ -14,7 +14,7 @@ const CERT_USADOS: Partial<Record<TipoECF, Set<number>>> = {
   E44: new Set([7, 11]),
   E45: new Set([1, 9]),
   E46: new Set([1, 2, 11]),
-  E47: new Set([8, 9]),
+  E47: new Set([1, 8, 9]),
 };
 
 export async function nextSecuencia(tipoECF: TipoECF): Promise<number> {

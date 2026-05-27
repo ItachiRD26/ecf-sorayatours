@@ -284,7 +284,7 @@ function buildItemsE47(items: LineaServicio[]): string {
       : item.precio;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
-      <IndicadorFacturacion>1</IndicadorFacturacion>
+      <IndicadorFacturacion>4</IndicadorFacturacion>
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
         <MontoISRRetenido>${fmt(c.sub * 0.27)}</MontoISRRetenido>
