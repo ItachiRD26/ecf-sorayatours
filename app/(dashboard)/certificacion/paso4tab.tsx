@@ -70,7 +70,7 @@ const hoy = () => new Date().toISOString().split("T")[0];
 
 interface E41Form {
   rncProveedor: string; nombreProveedor: string; descripcion: string;
-  montoSub: string; itbisRate: string; fecha: string;
+  montoSub: string; itbisRate: string; fecha: string; vencimientoECF: string;
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export default function Paso4Tab({ token }: { token: string }) {
   const [showE41,    setShowE41]    = useState(false);
   const [e41Form,    setE41Form]    = useState<E41Form>({
     rncProveedor: "", nombreProveedor: "", descripcion: "",
-    montoSub: "", itbisRate: "0.18", fecha: hoy(),
+    montoSub: "", itbisRate: "0.18", fecha: hoy(), vencimientoECF: "2028-12-31",
   });
   const [e41Sending, setE41Sending] = useState(false);
   const [e41Result,  setE41Result]  = useState<{ eCF: string; trackId: string } | null>(null);
@@ -122,6 +122,7 @@ export default function Paso4Tab({ token }: { token: string }) {
           montoSub:        parseFloat(e41Form.montoSub),
           itbisRate:       parseFloat(e41Form.itbisRate),
           fecha:           e41Form.fecha,
+          vencimientoECF:  e41Form.vencimientoECF,
           token,
         }),
       });
@@ -397,7 +398,7 @@ export default function Paso4Tab({ token }: { token: string }) {
 
             {/* Form */}
             <div style={{ padding:"16px 22px", display:"flex", flexDirection:"column", gap:14 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
                 <div>
                   <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>RNC / Cédula Proveedor</label>
                   <input
@@ -409,12 +410,21 @@ export default function Paso4Tab({ token }: { token: string }) {
                   />
                 </div>
                 <div>
-                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Fecha</label>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Fecha Emisión</label>
                   <input
                     type="date"
                     style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
                     value={e41Form.fecha}
                     onChange={e => setE41Field("fecha", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Venc. Secuencia</label>
+                  <input
+                    type="date"
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                    value={e41Form.vencimientoECF}
+                    onChange={e => setE41Field("vencimientoECF", e.target.value)}
                   />
                 </div>
               </div>
@@ -516,7 +526,7 @@ export default function Paso4Tab({ token }: { token: string }) {
               )}
               {e41Result && (
                 <button
-                  onClick={() => { setE41Form({ rncProveedor:"", nombreProveedor:"", descripcion:"", montoSub:"", itbisRate:"0.18", fecha:hoy() }); setE41Result(null); setE41Error(""); }}
+                  onClick={() => { setE41Form({ rncProveedor:"", nombreProveedor:"", descripcion:"", montoSub:"", itbisRate:"0.18", fecha:hoy(), vencimientoECF:"2028-12-31" }); setE41Result(null); setE41Error(""); }}
                   style={{ padding:"8px 20px", background:"#059669", border:"none", borderRadius:4, cursor:"pointer", fontSize:13, fontFamily:sans, color:"#fff", fontWeight:600 }}
                 >
                   + Crear otro E41

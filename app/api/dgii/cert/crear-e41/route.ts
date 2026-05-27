@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const uid = await verificarSesion(req);
     if (!uid) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-    const { rncProveedor, nombreProveedor, descripcion, montoSub, itbisRate, fecha, token } =
+    const { rncProveedor, nombreProveedor, descripcion, montoSub, itbisRate, fecha, vencimientoECF: vencBody, token } =
       await req.json();
 
     if (!rncProveedor || !nombreProveedor || !descripcion || montoSub == null || itbisRate == null) {
@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const empresa = (empresaSnap.exists && empresaSnap.data()?.rnc)
       ? empresaSnap.data() as typeof EMPRESA_FALLBACK
       : EMPRESA_FALLBACK;
-    const vencimientoECF = (empresaSnap.data()?.vencimientoECF as string | undefined) ?? "2027-12-31";
+    // Prioridad: valor del form → config empresa → fallback
+    const vencimientoECF: string = vencBody || (empresaSnap.data()?.vencimientoECF as string | undefined) || "2028-12-31";
 
     // Upsert proveedor en colección clientes (por si se quiere consultar después)
     const provQuery = await adminDb.collection("clientes")
