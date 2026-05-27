@@ -249,6 +249,31 @@ function buildItemsE41(items: LineaServicio[]): string {
   }).join("\n");
 }
 
+// E46 — Exportaciones: IndicadorFacturacion=3 (tasa 3, 0%)
+function buildItemsE46(items: LineaServicio[]): string {
+  return items.map((item, i) => {
+    const c       = calcLinea(item);
+    const paxDesc = item.pax > 0 ? ` | PAX: ${item.pax}` : "";
+    const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
+    const precioU = item.modo === "por_grupo"
+      ? (c.bruto / Math.max(item.pax, 1))
+      : item.precio;
+    const descLarga = item.descripcion.length > 80 || paxDesc;
+    return `<Item>
+      <NumeroLinea>${i + 1}</NumeroLinea>
+      <IndicadorFacturacion>3</IndicadorFacturacion>
+      <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
+      <IndicadorBienoServicio>2</IndicadorBienoServicio>
+      ${descLarga ? `<DescripcionItem>${escapeXml((item.descripcion + paxDesc).substring(0, 1000))}</DescripcionItem>` : ""}
+      <CantidadItem>${fmt(cant)}</CantidadItem>
+      <UnidadMedida>43</UnidadMedida>
+      <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
+      ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
+      <MontoItem>${fmt(c.sub)}</MontoItem>
+    </Item>`;
+  }).join("\n");
+}
+
 // E47 — Retencion con ISR retenido (27%)
 function buildItemsE47(items: LineaServicio[]): string {
   return items.map((item, i) => {
@@ -328,11 +353,15 @@ function totalesE44(f: Factura): string {
   </Totales>`;
 }
 
-// E46 — exportaciones (exentas)
+// E46 — exportaciones (tasa 3 = 0%, no exento)
 function totalesE46(f: Factura): string {
   const t = calcTotales(f.items);
   return `<Totales>
-    <MontoExento>${fmt(t.sub)}</MontoExento>
+    <MontoGravadoTotal>${fmt(t.sub)}</MontoGravadoTotal>
+    <MontoGravadoI3>${fmt(t.sub)}</MontoGravadoI3>
+    <ITBIS3>0</ITBIS3>
+    <TotalITBIS>${fmt(0)}</TotalITBIS>
+    <TotalITBIS3>${fmt(0)}</TotalITBIS3>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
   </Totales>`;
 }
@@ -529,7 +558,7 @@ function buildE46(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
     ${totalesE46(f)}
   </Encabezado>
   <DetallesItems>
-    ${buildItems(f.items)}
+    ${buildItemsE46(f.items)}
   </DetallesItems>
   <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;

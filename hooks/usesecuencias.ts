@@ -13,7 +13,7 @@ const CERT_USADOS: Partial<Record<TipoECF, Set<number>>> = {
   E43: new Set([9, 10, 11]),
   E44: new Set([7, 11]),
   E45: new Set([1, 9]),
-  E46: new Set([1, 11]),
+  E46: new Set([1, 2, 11]),
   E47: new Set([8, 9]),
 };
 
