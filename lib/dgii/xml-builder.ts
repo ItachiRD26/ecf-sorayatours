@@ -218,8 +218,9 @@ function buildItems(items: LineaServicio[]): string {
   }).join("\n");
 }
 
-// E41 — Retencion con MontoITBISRetenido por ítem (requerido por regla DGII).
-// MontoISRRetenido NO va aquí (es exclusivo de E47 — pagos al exterior).
+// E41 — Comprobante de Compras: el comprador retiene ITBIS (18%) e ISR (10%) por ítem.
+const ISR_RATE_E41 = 0.10;
+
 function buildItemsE41(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
@@ -234,6 +235,7 @@ function buildItemsE41(items: LineaServicio[]): string {
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
         ${c.itbis > 0 ? `<MontoITBISRetenido>${fmt(c.itbis)}</MontoITBISRetenido>` : ""}
+        <MontoISRRetenido>${fmt(c.sub * ISR_RATE_E41)}</MontoISRRetenido>
       </Retencion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
@@ -303,6 +305,7 @@ function totalesE41(f: Factura): string {
     <TotalITBIS1>${fmt(t.itbis)}</TotalITBIS1>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
     <TotalITBISRetenido>${fmt(t.itbis)}</TotalITBISRetenido>
+    <TotalISRRetencion>${fmt(t.sub * ISR_RATE_E41)}</TotalISRRetencion>
   </Totales>`;
 }
 

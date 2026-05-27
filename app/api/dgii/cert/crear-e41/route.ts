@@ -9,7 +9,7 @@ import { calcTotales } from "@/types";
 
 // TODO(cert): Eliminar CERT_USADOS_E41 una vez completado el proceso de certificación DGII.
 // Estos números fueron consumidos en el Paso 2 y no pueden reutilizarse.
-const CERT_USADOS_E41 = new Set([1, 10]);
+const CERT_USADOS_E41 = new Set([1, 7, 10]);
 
 async function nextE41Seq(): Promise<number> {
   const ref = adminDb.collection("config").doc("secuencias");
