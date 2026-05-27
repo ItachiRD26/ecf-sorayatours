@@ -119,6 +119,7 @@ function idDocE34(f: Factura, inclMontoGrav = false): string {
     <eNCF>${f.eCF}</eNCF>
     <IndicadorNotaCredito>${indNotaC}</IndicadorNotaCredito>
     ${inclMontoGrav ? `<IndicadorMontoGravado>0</IndicadorMontoGravado>` : ""}
+    <TipoIngresos>01</TipoIngresos>
     <TipoPago>1</TipoPago>
   </IdDoc>`;
 }
