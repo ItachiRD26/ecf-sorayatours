@@ -133,6 +133,13 @@ export async function POST(req: NextRequest) {
 
     // Construir + firmar XML
     const xmlSinFirma = buildXML(factura, proveedor, empresa);
+    // DEBUG: escribir XML sin firma para diagnóstico
+    try {
+      const fs2 = await import("fs"); const p = await import("path");
+      fs2.mkdirSync("/tmp/ecf-debug", { recursive: true });
+      fs2.writeFileSync(p.join("/tmp/ecf-debug", `${eCF}_sinfirma.xml`), xmlSinFirma);
+    } catch { /* no crítico */ }
+    console.log("[crear-e41] XML sin firma:\n", xmlSinFirma);
     const xmlFirmado  = await firmarXML(xmlSinFirma);
 
     const sigMatch       = xmlFirmado.match(/<SignatureValue>([\s\S]*?)<\/SignatureValue>/);
