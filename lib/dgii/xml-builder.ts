@@ -218,8 +218,8 @@ function buildItems(items: LineaServicio[]): string {
   }).join("\n");
 }
 
-// E41 — Retencion: solo IndicadorAgenteRetencionoPercepcion en el item.
-// MontoITBISRetenido va únicamente en Totales, no en cada Item (evita error DGII).
+// E41 — Retencion con MontoITBISRetenido por ítem (requerido por regla DGII).
+// MontoISRRetenido NO va aquí (es exclusivo de E47 — pagos al exterior).
 function buildItemsE41(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
@@ -233,6 +233,7 @@ function buildItemsE41(items: LineaServicio[]): string {
       <IndicadorFacturacion>${indFact}</IndicadorFacturacion>
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
+        ${c.itbis > 0 ? `<MontoITBISRetenido>${fmt(c.itbis)}</MontoITBISRetenido>` : ""}
       </Retencion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
@@ -297,6 +298,7 @@ function totalesE41(f: Factura): string {
     <MontoGravadoTotal>${fmt(grav)}</MontoGravadoTotal>
     <MontoGravadoI1>${fmt(grav)}</MontoGravadoI1>
     <MontoExento>${fmt(exentos)}</MontoExento>
+    ${t.itbis > 0 ? `<ITBIS1>18</ITBIS1>` : ""}
     <TotalITBIS>${fmt(t.itbis)}</TotalITBIS>
     <TotalITBIS1>${fmt(t.itbis)}</TotalITBIS1>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
