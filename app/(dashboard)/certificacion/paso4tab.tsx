@@ -73,6 +73,31 @@ interface E41Form {
   montoSub: string; itbisRate: string; fecha: string; vencimientoECF: string;
 }
 
+type CertTipoECF = "E43" | "E44" | "E45" | "E46" | "E47";
+const CERT_TIPOS: string[] = ["E43","E44","E45","E46","E47"];
+
+interface CertForm {
+  descripcion: string; monto: string; itbisRate: string;
+  rncComprador: string; nombreComprador: string;
+  idExtranjero: string; nombreExtranjero: string;
+  esExtranjero: boolean; fecha: string; vencimientoECF: string;
+}
+
+const CERT_INFO: Record<CertTipoECF, { label: string; nota: string; color: string }> = {
+  E43: { color:"#6b7280", label:"Gastos Menores",   nota:"Gasto menor sin RNC del proveedor. Exento de ITBIS." },
+  E44: { color:"#2563eb", label:"Régimen Especial", nota:"Venta a zona franca o régimen especial. Exento de ITBIS." },
+  E45: { color:"#7c3aed", label:"Gubernamental",    nota:"Venta a institución gubernamental. ITBIS 18%." },
+  E46: { color:"#0891b2", label:"Exportación",      nota:"Venta al exterior. Exento. Puede ser empresa local (RNC) o extranjera (ID)." },
+  E47: { color:"#9333ea", label:"Pago al Exterior", nota:"Pago a suplidor extranjero. Exento + ISR 27% retenido." },
+};
+
+const certFormInit = (): CertForm => ({
+  descripcion:"", monto:"", itbisRate:"0",
+  rncComprador:"", nombreComprador:"",
+  idExtranjero:"", nombreExtranjero:"",
+  esExtranjero:false, fecha:hoy(), vencimientoECF:"2028-12-31",
+});
+
 // ── Component ────────────────────────────────────────────────────────────────
 export default function Paso4Tab({ token }: { token: string }) {
   const [facturas,   setFacturas]   = useState<Factura[]>([]);
@@ -89,6 +114,13 @@ export default function Paso4Tab({ token }: { token: string }) {
   const [e41Result,  setE41Result]  = useState<{ eCF: string; trackId: string } | null>(null);
   const [e41Error,   setE41Error]   = useState("");
 
+  // Cert modal (E43/E44/E45/E46/E47)
+  const [activeCert,  setActiveCert]  = useState<CertTipoECF | null>(null);
+  const [certForm,    setCertForm]    = useState<CertForm>(certFormInit());
+  const [certSending, setCertSending] = useState(false);
+  const [certResult,  setCertResult]  = useState<{ eCF: string; trackId: string } | null>(null);
+  const [certError,   setCertError]   = useState("");
+
   // Suscribir a facturas en tiempo real
   useEffect(() => {
     const q = query(collection(db, "facturas"), orderBy("fecha", "desc"));
@@ -99,7 +131,58 @@ export default function Paso4Tab({ token }: { token: string }) {
     return () => unsub();
   }, []);
 
-  const setE41Field = (k: keyof E41Form, v: string) => setE41Form(p => ({ ...p, [k]: v }));
+  const setE41Field  = (k: keyof E41Form,  v: string) => setE41Form(p => ({ ...p, [k]: v }));
+  const setCertField = (k: keyof CertForm, v: string | boolean) => setCertForm(p => ({ ...p, [k]: v }));
+
+  const openCertModal = (tipo: CertTipoECF) => {
+    setActiveCert(tipo);
+    setCertForm({ ...certFormInit(), itbisRate: tipo === "E45" ? "0.18" : "0" });
+    setCertResult(null);
+    setCertError("");
+  };
+
+  const handleCreateCert = async () => {
+    if (!activeCert) return;
+    const tipo = activeCert;
+    const rnc  = certForm.rncComprador.replace(/\D/g, "");
+    if (!certForm.descripcion.trim())                     { setCertError("Descripción requerida"); return; }
+    if (!certForm.monto || Number(certForm.monto) <= 0)   { setCertError("Monto debe ser mayor a 0"); return; }
+    if (["E44","E45"].includes(tipo) || (tipo === "E46" && !certForm.esExtranjero)) {
+      if (rnc.length !== 9 && rnc.length !== 11)          { setCertError("RNC debe tener 9 u 11 dígitos"); return; }
+      if (!certForm.nombreComprador.trim())                { setCertError("Nombre del comprador requerido"); return; }
+    }
+    if (tipo === "E47" || (tipo === "E46" && certForm.esExtranjero)) {
+      if (!certForm.idExtranjero.trim())                   { setCertError("Identificador del extranjero requerido"); return; }
+      if (!certForm.nombreExtranjero.trim())               { setCertError("Nombre del extranjero requerido"); return; }
+    }
+    if (!token) { setCertError("Necesitas el token activo"); return; }
+    setCertSending(true); setCertError(""); setCertResult(null);
+    try {
+      const body: Record<string, unknown> = {
+        tipoECF: tipo, descripcion: certForm.descripcion.trim(),
+        monto: parseFloat(certForm.monto), itbisRate: parseFloat(certForm.itbisRate),
+        fecha: certForm.fecha, vencimientoECF: certForm.vencimientoECF, token,
+      };
+      if (["E44","E45"].includes(tipo) || (tipo === "E46" && !certForm.esExtranjero)) {
+        body.rncComprador    = rnc;
+        body.nombreComprador = certForm.nombreComprador.trim();
+      }
+      if (tipo === "E47" || (tipo === "E46" && certForm.esExtranjero)) {
+        body.idExtranjero     = certForm.idExtranjero.trim();
+        body.nombreExtranjero = certForm.nombreExtranjero.trim();
+      }
+      const res  = await fetch("/api/dgii/cert/crear-ecf", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setCertResult({ eCF: data.eCF, trackId: data.trackId });
+    } catch (e: unknown) {
+      setCertError(e instanceof Error ? e.message : "Error desconocido");
+    } finally {
+      setCertSending(false);
+    }
+  };
 
   const handleCreateE41 = async () => {
     const rnc = e41Form.rncProveedor.replace(/\D/g, "");
@@ -257,6 +340,18 @@ export default function Paso4Tab({ token }: { token: string }) {
                           }}
                         >
                           + Crear E41
+                        </button>
+                      ) : CERT_TIPOS.includes(req.tipoECF) ? (
+                        <button
+                          onClick={() => openCertModal(req.tipoECF as CertTipoECF)}
+                          style={{
+                            display:"inline-flex", alignItems:"center", gap:6,
+                            padding:"7px 14px", background:req.color, color:"#fff",
+                            borderRadius:4, fontSize:12, fontFamily:sans, fontWeight:600,
+                            border:"none", cursor:"pointer",
+                          }}
+                        >
+                          + Crear {req.tipoECF}
                         </button>
                       ) : (
                         <Link
@@ -537,6 +632,219 @@ export default function Paso4Tab({ token }: { token: string }) {
           </div>
         </div>
       )}
+
+      {/* ── Modal Cert (E43/E44/E45/E46/E47) ─────────────────────────────── */}
+      {activeCert && (() => {
+        const info  = CERT_INFO[activeCert];
+        const monto = Number(certForm.monto) || 0;
+        const rate  = Number(certForm.itbisRate) || 0;
+        const itbisAmt = monto * rate;
+        const isr27    = activeCert === "E47" ? monto * 0.27 : 0;
+        return (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.55)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+            <div style={{ background:"#fff", borderRadius:8, maxWidth:520, width:"100%", maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 64px rgba(0,0,0,0.2)", overflow:"hidden" }}>
+
+              {/* Header */}
+              <div style={{ padding:"16px 22px", borderBottom:"1px solid #e5e7eb", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <span style={{ fontSize:11, padding:"2px 7px", borderRadius:3, fontWeight:700, fontFamily:mono, background:`${info.color}15`, color:info.color, border:`1px solid ${info.color}30`, marginRight:8 }}>{activeCert}</span>
+                  <span style={{ fontSize:15, fontWeight:600, color:"#111", fontFamily:sans }}>{info.label}</span>
+                </div>
+                <button onClick={() => setActiveCert(null)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:"#9ca3af", lineHeight:1 }}>×</button>
+              </div>
+
+              {/* Nota */}
+              <div style={{ padding:"12px 22px 0" }}>
+                <div style={{ background:`${info.color}10`, border:`1px solid ${info.color}30`, borderRadius:4, padding:"8px 12px", fontSize:12, color:"#374151", lineHeight:1.6 }}>
+                  {info.nota}
+                </div>
+              </div>
+
+              {/* Form */}
+              <div style={{ padding:"16px 22px", display:"flex", flexDirection:"column", gap:14 }}>
+
+                {/* E46 toggle local/extranjero */}
+                {activeCert === "E46" && (
+                  <div style={{ display:"flex", gap:20 }}>
+                    <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:sans, cursor:"pointer" }}>
+                      <input type="radio" checked={!certForm.esExtranjero} onChange={() => setCertField("esExtranjero", false)} />
+                      <span>Comprador local (RNC)</span>
+                    </label>
+                    <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:12, fontFamily:sans, cursor:"pointer" }}>
+                      <input type="radio" checked={certForm.esExtranjero} onChange={() => setCertField("esExtranjero", true)} />
+                      <span>Comprador extranjero (ID)</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* RNC + Nombre (E44, E45, E46-local) */}
+                {(["E44","E45"].includes(activeCert) || (activeCert === "E46" && !certForm.esExtranjero)) && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12 }}>
+                    <div>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>RNC / Cédula</label>
+                      <input
+                        style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                        placeholder="131880681"
+                        value={certForm.rncComprador}
+                        onChange={e => setCertField("rncComprador", e.target.value)}
+                        maxLength={11}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Razón Social</label>
+                      <input
+                        style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", boxSizing:"border-box" }}
+                        placeholder="Empresa SRL"
+                        value={certForm.nombreComprador}
+                        onChange={e => setCertField("nombreComprador", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ID Extranjero + Nombre (E47, E46-extranjero) */}
+                {(activeCert === "E47" || (activeCert === "E46" && certForm.esExtranjero)) && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12 }}>
+                    <div>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>ID Extranjero</label>
+                      <input
+                        style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                        placeholder="350555123"
+                        value={certForm.idExtranjero}
+                        onChange={e => setCertField("idExtranjero", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Nombre Extranjero</label>
+                      <input
+                        style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", boxSizing:"border-box" }}
+                        placeholder="Foreign Company Ltd"
+                        value={certForm.nombreExtranjero}
+                        onChange={e => setCertField("nombreExtranjero", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Descripción */}
+                <div>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Descripción</label>
+                  <input
+                    style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", boxSizing:"border-box" }}
+                    placeholder="Servicio / bien adquirido"
+                    value={certForm.descripcion}
+                    onChange={e => setCertField("descripcion", e.target.value)}
+                    maxLength={80}
+                  />
+                </div>
+
+                {/* Monto + ITBIS (E45) + fechas */}
+                <div style={{ display:"grid", gridTemplateColumns: activeCert === "E45" ? "1fr 1fr 1fr 1fr" : "1fr 1fr 1fr", gap:12 }}>
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Monto (RD$)</label>
+                    <input
+                      type="number" min="1" step="0.01"
+                      style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                      placeholder="10000.00"
+                      value={certForm.monto}
+                      onChange={e => setCertField("monto", e.target.value)}
+                    />
+                  </div>
+                  {activeCert === "E45" && (
+                    <div>
+                      <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>ITBIS</label>
+                      <select
+                        style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:sans, outline:"none", background:"#fff", boxSizing:"border-box" }}
+                        value={certForm.itbisRate}
+                        onChange={e => setCertField("itbisRate", e.target.value)}
+                      >
+                        <option value="0">Exento</option>
+                        <option value="0.18">18%</option>
+                      </select>
+                    </div>
+                  )}
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Fecha Emisión</label>
+                    <input
+                      type="date"
+                      style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                      value={certForm.fecha}
+                      onChange={e => setCertField("fecha", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#374151", textTransform:"uppercase", letterSpacing:"0.05em", marginBottom:4, fontFamily:sans }}>Venc. Secuencia</label>
+                    <input
+                      type="date"
+                      style={{ width:"100%", padding:"8px 10px", border:"1px solid #d1d5db", borderRadius:4, fontSize:13, fontFamily:mono, outline:"none", boxSizing:"border-box" }}
+                      value={certForm.vencimientoECF}
+                      onChange={e => setCertField("vencimientoECF", e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                {/* Preview monto */}
+                {monto > 0 && (
+                  <div style={{ background:"#f9fafb", border:"1px solid #e5e7eb", borderRadius:4, padding:"10px 14px", display:"flex", gap:16, flexWrap:"wrap", fontFamily:mono, fontSize:12 }}>
+                    <span><span style={{ color:"#6b7280" }}>Monto: </span>RD${monto.toLocaleString("es-DO",{minimumFractionDigits:2})}</span>
+                    {itbisAmt > 0 && <span><span style={{ color:"#6b7280" }}>ITBIS: </span><span style={{ color:"#dc2626" }}>RD${itbisAmt.toLocaleString("es-DO",{minimumFractionDigits:2})}</span></span>}
+                    {isr27    > 0 && <span><span style={{ color:"#6b7280" }}>ISR 27%: </span><span style={{ color:"#dc2626" }}>RD${isr27.toLocaleString("es-DO",{minimumFractionDigits:2})}</span></span>}
+                    <span style={{ fontWeight:700 }}>Total: RD${(monto + itbisAmt).toLocaleString("es-DO",{minimumFractionDigits:2})}</span>
+                  </div>
+                )}
+
+                {certError && (
+                  <div style={{ background:"#fef2f2", border:"1px solid #fecaca", borderRadius:4, padding:"8px 12px", fontSize:12, color:"#991b1b", fontFamily:sans }}>
+                    {certError}
+                  </div>
+                )}
+
+                {certResult && (
+                  <div style={{ background:"#f0fdf4", border:"1px solid #bbf7d0", borderRadius:4, padding:"10px 14px", fontFamily:sans, fontSize:12, color:"#166534" }}>
+                    <div style={{ fontWeight:700, marginBottom:4 }}>✅ {activeCert} emitido y enviado a DGII</div>
+                    <div style={{ fontFamily:mono }}>eNCF: {certResult.eCF}</div>
+                    <div style={{ fontFamily:mono, marginTop:2 }}>trackId: {certResult.trackId}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding:"12px 22px 18px", display:"flex", gap:8, justifyContent:"flex-end", borderTop:"1px solid #f3f4f6" }}>
+                <button
+                  onClick={() => setActiveCert(null)}
+                  style={{ padding:"8px 16px", background:"#fff", border:"1px solid #d1d5db", borderRadius:4, cursor:"pointer", fontSize:13, fontFamily:sans, color:"#374151" }}
+                >
+                  {certResult ? "Cerrar" : "Cancelar"}
+                </button>
+                {!certResult && (
+                  <button
+                    onClick={handleCreateCert}
+                    disabled={certSending}
+                    style={{
+                      padding:"8px 20px",
+                      background: certSending ? "#d1d5db" : info.color,
+                      border:"none", borderRadius:4,
+                      cursor: certSending ? "not-allowed" : "pointer",
+                      fontSize:13, fontFamily:sans, color:"#fff", fontWeight:600,
+                    }}
+                  >
+                    {certSending ? "Emitiendo…" : `Emitir ${activeCert}`}
+                  </button>
+                )}
+                {certResult && (
+                  <button
+                    onClick={() => { setCertForm({ ...certFormInit(), itbisRate: activeCert === "E45" ? "0.18" : "0" }); setCertResult(null); setCertError(""); }}
+                    style={{ padding:"8px 20px", background:info.color, border:"none", borderRadius:4, cursor:"pointer", fontSize:13, fontFamily:sans, color:"#fff", fontWeight:600 }}
+                  >
+                    + Crear otro {activeCert}
+                  </button>
+                )}
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

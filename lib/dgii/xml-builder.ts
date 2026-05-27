@@ -203,9 +203,10 @@ function buildItems(items: LineaServicio[]): string {
       ? (c.bruto / Math.max(item.pax, 1))
       : item.precio;
     const descLarga = item.descripcion.length > 80 || paxDesc;
+    const indFact = item.itbis === 0.18 ? 1 : item.itbis === 0.16 ? 2 : 4;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
-      <IndicadorFacturacion>1</IndicadorFacturacion>
+      <IndicadorFacturacion>${indFact}</IndicadorFacturacion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
       ${descLarga ? `<DescripcionItem>${escapeXml((item.descripcion + paxDesc).substring(0, 1000))}</DescripcionItem>` : ""}
