@@ -310,11 +310,11 @@ function totalesE41(f: Factura): string {
   </Totales>`;
 }
 
-// E43 — gastos menores
+// E43 — gastos menores (todos los ítems son exentos)
 function totalesE43(f: Factura): string {
   const t = calcTotales(f.items);
   return `<Totales>
-    <MontoExento>0.00</MontoExento>
+    <MontoExento>${fmt(t.sub)}</MontoExento>
     <MontoTotal>${fmt(t.total)}</MontoTotal>
   </Totales>`;
 }

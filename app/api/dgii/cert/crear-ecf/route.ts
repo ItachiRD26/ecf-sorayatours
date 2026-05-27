@@ -11,7 +11,7 @@ type CertTipoECF = "E43" | "E44" | "E45" | "E46" | "E47";
 
 // TODO(cert): Eliminar CERT_USADOS_ECF una vez completado el proceso de certificación DGII.
 const CERT_USADOS_ECF: Record<CertTipoECF, Set<number>> = {
-  E43: new Set([9, 10]),
+  E43: new Set([9, 10, 11]),
   E44: new Set([7, 11]),
   E45: new Set([1, 9]),
   E46: new Set([1, 11]),
