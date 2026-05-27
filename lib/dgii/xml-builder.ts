@@ -234,7 +234,7 @@ function buildItemsE41(items: LineaServicio[]): string {
       <IndicadorFacturacion>${indFact}</IndicadorFacturacion>
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
-        ${c.itbis > 0 ? `<MontoITBISRetenido>${fmt(c.itbis)}</MontoITBISRetenido>` : ""}
+        ${c.itbisAmt > 0 ? `<MontoITBISRetenido>${fmt(c.itbisAmt)}</MontoITBISRetenido>` : ""}
         <MontoISRRetenido>${fmt(c.sub * ISR_RATE_E41)}</MontoISRRetenido>
       </Retencion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
