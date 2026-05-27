@@ -218,7 +218,8 @@ function buildItems(items: LineaServicio[]): string {
   }).join("\n");
 }
 
-// E41 — Retencion con IndicadorAgenteRetencionoPercepcion
+// E41 — Retencion: solo IndicadorAgenteRetencionoPercepcion en el item.
+// MontoITBISRetenido va únicamente en Totales, no en cada Item (evita error DGII).
 function buildItemsE41(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
@@ -226,18 +227,19 @@ function buildItemsE41(items: LineaServicio[]): string {
     const precioU = item.modo === "por_grupo"
       ? (c.bruto / Math.max(item.pax, 1))
       : item.precio;
+    const indFact = item.itbis === 0.18 ? 1 : item.itbis === 0.16 ? 2 : 4;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
-      <IndicadorFacturacion>1</IndicadorFacturacion>
+      <IndicadorFacturacion>${indFact}</IndicadorFacturacion>
       <Retencion>
         <IndicadorAgenteRetencionoPercepcion>1</IndicadorAgenteRetencionoPercepcion>
-        <MontoITBISRetenido>${fmt(c.itbisAmt)}</MontoITBISRetenido>
       </Retencion>
       <NombreItem>${escapeXml(item.descripcion.substring(0, 80))}</NombreItem>
       <IndicadorBienoServicio>2</IndicadorBienoServicio>
       <CantidadItem>${fmt(cant)}</CantidadItem>
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
+      ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
       <MontoItem>${fmt(c.sub)}</MontoItem>
     </Item>`;
   }).join("\n");
