@@ -134,6 +134,17 @@ export default function Paso4Tab({ token }: { token: string }) {
   const setE41Field  = (k: keyof E41Form,  v: string) => setE41Form(p => ({ ...p, [k]: v }));
   const setCertField = (k: keyof CertForm, v: string | boolean) => setCertForm(p => ({ ...p, [k]: v }));
 
+  const downloadXML = (f: Factura) => {
+    if (!f.xmlFirmado) return;
+    const blob = new Blob([f.xmlFirmado], { type: "application/xml; charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `${f.eCF}.xml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const openCertModal = (tipo: CertTipoECF) => {
     setActiveCert(tipo);
     setCertForm({ ...certFormInit(), itbisRate: tipo === "E45" ? "0.18" : "0" });
@@ -412,14 +423,25 @@ export default function Paso4Tab({ token }: { token: string }) {
                                   </span>
                                 </td>
                                 <td style={{ padding:"7px 8px" }}>
-                                  <Link
-                                    href={`/facturas?print=${f.id}`}
-                                    target="_blank"
-                                    style={{ fontSize:11, color:req.color, fontFamily:sans, fontWeight:600, textDecoration:"none", whiteSpace:"nowrap" }}
-                                    title="Ver representación impresa (para Paso 5)"
-                                  >
-                                    🖨 Ver
-                                  </Link>
+                                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                    <Link
+                                      href={`/facturas?print=${f.id}`}
+                                      target="_blank"
+                                      style={{ fontSize:11, color:req.color, fontFamily:sans, fontWeight:600, textDecoration:"none", whiteSpace:"nowrap" }}
+                                      title="Ver representación impresa (para Paso 5)"
+                                    >
+                                      🖨 Ver
+                                    </Link>
+                                    {req.esRFCE && f.xmlFirmado && (
+                                      <button
+                                        onClick={() => downloadXML(f)}
+                                        title="Descargar XML firmado para subir al portal certecf"
+                                        style={{ fontSize:11, color:"#7c3aed", fontFamily:sans, fontWeight:600, background:"none", border:"none", cursor:"pointer", whiteSpace:"nowrap", padding:0 }}
+                                      >
+                                        ⬇ XML
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
