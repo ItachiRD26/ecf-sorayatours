@@ -22,6 +22,13 @@ const labelStyle: React.CSSProperties = {
 const MOTIVOS_CREDITO = ["Anulacion de operacion","Devolucion de servicio","Descuento posterior","Error en precio","Error en cantidad","Otro"];
 const MOTIVOS_DEBITO  = ["Intereses por mora","Gastos adicionales","Diferencia de precio","Otro"];
 
+const CODIGOS_MOD_E34 = [
+  { value: "1", label: "1 - Descuento" },
+  { value: "2", label: "2 - Corrige Texto (monto debe ser 0)" },
+  { value: "3", label: "3 - Devolucion" },
+  { value: "4", label: "4 - Corrige Monto" },
+];
+
 const ITEM_VACIO: LineaServicio = {
   codigo: "", descripcion: "", modo: "por_persona",
   cant: 1, pax: 0, precio: 0, descuentoMonto: 0, itbis: 0,
@@ -47,6 +54,7 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
   const esCredito = tipo === "E34";
   const motivos   = esCredito ? MOTIVOS_CREDITO : MOTIVOS_DEBITO;
   const [motivo,  setMotivo]  = useState(motivos[0]);
+  const [codMod,  setCodMod]  = useState("1");
   const [notas,   setNotas]   = useState("");
   const [items,   setItems]   = useState<LineaServicio[]>([{ ...ITEM_VACIO }]);
 
@@ -67,6 +75,7 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
       fecha: today(), vencimientoECF: facturaRef.vencimientoECF,
       terminos: facturaRef.terminos, clienteId: facturaRef.clienteId,
       eCFRef: facturaRef.eCF, motivoNota: motivo, estado: "pagada" as const,
+      ...(esCredito ? { codigoModificacion: codMod } : {}),
       items: items.filter((i) => i.descripcion), notas: notas || undefined,
       esConsumidorFinal: facturaRef.esConsumidorFinal,
       nombreConsumidor:  facturaRef.nombreConsumidor,
@@ -104,6 +113,20 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
               {motivos.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
+
+          {esCredito && (
+            <div>
+              <label style={labelStyle}>Codigo de Modificacion (DGII)</label>
+              <select style={inputStyle} value={codMod} onChange={(e) => setCodMod(e.target.value)}>
+                {CODIGOS_MOD_E34.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              {codMod === "2" && (
+                <div style={{ marginTop: 6, fontSize: 11, color: "#b45309", fontFamily: sans, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, padding: "6px 10px" }}>
+                  Codigo 2 (Corrige Texto): el monto de todos los items debe ser 0.
+                </div>
+              )}
+            </div>
+          )}
 
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, fontFamily: sans }}>

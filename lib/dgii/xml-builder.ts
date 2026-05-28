@@ -470,7 +470,7 @@ function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
-  ${infoRef(f, "2")}
+  ${infoRef(f, f.codigoModificacion ?? "1")}
   <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }

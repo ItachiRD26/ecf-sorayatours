@@ -181,6 +181,7 @@ export interface Factura {
   cotizacionRef?:        string;
   eCFRef?:               string;
   motivoNota?:           string;
+  codigoModificacion?:   string;
   esConsumidorFinal?:    boolean;
   nombreConsumidor?:     string;
   telefonoConsumidor?:   string;
