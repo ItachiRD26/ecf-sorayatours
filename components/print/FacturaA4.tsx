@@ -50,9 +50,11 @@ function fmtFechaFirma(iso?: string): string {
 }
 
 export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA }: Props) {
-  const esNota = factura.tipoECF === "E33" || factura.tipoECF === "E34";
-  const esE32  = factura.tipoECF === "E32";
-  const esE41  = factura.tipoECF === "E41";
+  const esNota   = factura.tipoECF === "E33" || factura.tipoECF === "E34";
+  const esE32    = factura.tipoECF === "E32";
+  const esE41    = factura.tipoECF === "E41";
+  // E31/E32/E33/E34 → tabla turismo (PAX + Modo); resto → tabla estándar DGII
+  const esTurismo = ["E31","E32","E33","E34"].includes(factura.tipoECF);
   const e      = { ...DEFAULT_EMPRESA, ...empresa };
   const t      = calcTotales(factura.items);
 
@@ -156,62 +158,87 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
       )}
 
       {/* ── TABLA DE ITEMS ── */}
-      <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16, fontSize: 11 }}>
-        <thead>
-          <tr style={{ background: headerColor }}>
-            {([
-              { h: "Cantidad",    align: "center", w: "7%"   },
-              { h: "Descripcion", align: "left",   w: "auto" },
-              { h: "PAX",         align: "center", w: "6%"   },
-              { h: "Modo",        align: "left",   w: "10%"  },
-              { h: "Precio",      align: "right",  w: "13%"  },
-              { h: "Desc. RD$",   align: "right",  w: "10%"  },
-              { h: "ITBIS",       align: "right",  w: "10%"  },
-              { h: "Valor",       align: "right",  w: "12%"  },
-            ] as const).map(({ h, align, w }, i) => (
-              <th key={h} style={{
-                padding: "8px 10px", color: "#fff", fontSize: 10, fontWeight: 600,
-                textAlign: align, width: w,
-                borderRight: i < 7 ? "1px solid rgba(255,255,255,0.12)" : "none",
-              }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {factura.items.map((item: LineaServicio, i: number) => {
-            const c = calcLinea(item);
-            const precioLabel = item.modo === "por_grupo"
-              ? "RD$ " + fmt(item.precio) + " (grupo)"
-              : "RD$ " + fmt(item.precio) + "/p.";
-            return (
-              <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700 }}>{item.cant || 1}</td>
-                <td style={{ padding: "8px 10px" }}>
-                  <div style={{ fontWeight: 500 }}>{item.descripcion}</div>
-                  {item.tramoLabel && <div style={{ fontSize: 9, color: "#9ca3af" }}>{item.tramoLabel}</div>}
-                  {item.fechaTour  && <div style={{ fontSize: 9, color: "#6b7280" }}>Fecha: {fmtDate(item.fechaTour)}</div>}
-                </td>
-                <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700, color: "#0e7490", fontSize: 13 }}>
-                  {item.pax || item.cant}
-                </td>
-                <td style={{ padding: "8px 10px", color: "#6b7280", fontSize: 10 }}>
-                  {item.modo === "por_grupo" ? "Por Grupo" : "Por Persona"}
-                </td>
-                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontSize: 10, color: "#374151" }}>{precioLabel}</td>
-                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono }}>
-                  {c.descAmt > 0
-                    ? <span style={{ color: "#dc2626" }}>{fmt(c.descAmt)}</span>
-                    : <span style={{ color: "#d1d5db" }}>---</span>}
-                </td>
-                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, color: "#1d4ed8" }}>
-                  {item.itbis > 0 ? fmt(c.itbisAmt) : "Exento"}
-                </td>
-                <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontWeight: 700 }}>{fmt(c.total)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {esTurismo ? (
+        /* Tabla turismo: PAX + Modo (E31/E32/E33/E34) */
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16, fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: headerColor }}>
+              {([
+                { h: "Cantidad",    align: "center", w: "7%"   },
+                { h: "Descripcion", align: "left",   w: "auto" },
+                { h: "PAX",         align: "center", w: "6%"   },
+                { h: "Modo",        align: "left",   w: "10%"  },
+                { h: "Precio",      align: "right",  w: "13%"  },
+                { h: "Desc. RD$",   align: "right",  w: "10%"  },
+                { h: "ITBIS",       align: "right",  w: "10%"  },
+                { h: "Valor",       align: "right",  w: "12%"  },
+              ] as const).map(({ h, align, w }, i) => (
+                <th key={h} style={{ padding: "8px 10px", color: "#fff", fontSize: 10, fontWeight: 600, textAlign: align, width: w, borderRight: i < 7 ? "1px solid rgba(255,255,255,0.12)" : "none" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {factura.items.map((item: LineaServicio, i: number) => {
+              const c = calcLinea(item);
+              const precioLabel = item.modo === "por_grupo"
+                ? "RD$ " + fmt(item.precio) + " (grupo)"
+                : "RD$ " + fmt(item.precio) + "/p.";
+              return (
+                <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                  <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700 }}>{item.cant || 1}</td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <div style={{ fontWeight: 500 }}>{item.descripcion}</div>
+                    {item.tramoLabel && <div style={{ fontSize: 9, color: "#9ca3af" }}>{item.tramoLabel}</div>}
+                    {item.fechaTour  && <div style={{ fontSize: 9, color: "#6b7280" }}>Fecha: {fmtDate(item.fechaTour)}</div>}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700, color: "#0e7490", fontSize: 13 }}>{item.pax || item.cant}</td>
+                  <td style={{ padding: "8px 10px", color: "#6b7280", fontSize: 10 }}>{item.modo === "por_grupo" ? "Por Grupo" : "Por Persona"}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontSize: 10, color: "#374151" }}>{precioLabel}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono }}>
+                    {c.descAmt > 0 ? <span style={{ color: "#dc2626" }}>{fmt(c.descAmt)}</span> : <span style={{ color: "#d1d5db" }}>---</span>}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, color: "#1d4ed8" }}>{item.itbis > 0 ? fmt(c.itbisAmt) : "Exento"}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontWeight: 700 }}>{fmt(c.total)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        /* Tabla estándar DGII: Cantidad | Descripción | Precio | ITBIS | Valor (E41/E43–E47) */
+        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16, fontSize: 11 }}>
+          <thead>
+            <tr style={{ background: headerColor }}>
+              {([
+                { h: "Cantidad",    align: "center", w: "10%"  },
+                { h: "Descripcion", align: "left",   w: "auto" },
+                { h: "Precio",      align: "right",  w: "18%"  },
+                { h: "ITBIS",       align: "right",  w: "16%"  },
+                { h: "Valor",       align: "right",  w: "16%"  },
+              ] as const).map(({ h, align, w }, i) => (
+                <th key={h} style={{ padding: "8px 10px", color: "#fff", fontSize: 10, fontWeight: 600, textAlign: align, width: w, borderRight: i < 4 ? "1px solid rgba(255,255,255,0.12)" : "none" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {factura.items.map((item: LineaServicio, i: number) => {
+              const c = calcLinea(item);
+              return (
+                <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
+                  <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700 }}>{item.cant || 1}</td>
+                  <td style={{ padding: "8px 10px" }}>
+                    <div style={{ fontWeight: 500 }}>{item.descripcion}</div>
+                    {item.tramoLabel && <div style={{ fontSize: 9, color: "#9ca3af" }}>{item.tramoLabel}</div>}
+                  </td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono }}>{fmt(item.precio)}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, color: "#1d4ed8" }}>{item.itbis > 0 ? fmt(c.itbisAmt) : "Exento"}</td>
+                  <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontWeight: 700 }}>{fmt(c.sub)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
 
       {/* ── TOTALES (estilo DGII: Subtotal Gravado / Total ITBIS / Total) ── */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
