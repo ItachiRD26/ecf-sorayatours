@@ -2,6 +2,7 @@
 
 import type { Factura, LineaServicio } from "@/types";
 import { fmt, fmtDate, calcLinea, calcTotales } from "@/types";
+import { QRCodeSVG } from "qrcode.react";
 
 const sans  = "var(--font-sans)";
 const mono  = "var(--font-mono)";
@@ -198,14 +199,26 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
 
       {/* QR */}
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16 }}>
-        <div style={{ width: 72, height: 72, flexShrink: 0, border: "2px dashed #9ca3af", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}>
-          <span style={{ fontSize: 26 }}>&#9638;</span>
-          <span style={{ fontSize: 8, color: "#6b7280", marginTop: 2 }}>QR DGII</span>
+        <div style={{ width: 80, height: 80, flexShrink: 0 }}>
+          {factura.urlQR
+            ? <QRCodeSVG value={factura.urlQR} size={80} level="M" />
+            : <div style={{ width: 80, height: 80, border: "2px dashed #9ca3af", borderRadius: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}>
+                <span style={{ fontSize: 26 }}>&#9638;</span>
+                <span style={{ fontSize: 8, color: "#6b7280", marginTop: 2 }}>QR DGII</span>
+              </div>
+          }
         </div>
-        <div style={{ fontSize: 10, color: "#555", lineHeight: 2 }}>
+        <div style={{ fontSize: 10, color: "#555", lineHeight: 1.8 }}>
           <div style={{ fontWeight: 700, color: "#374151" }}>Codigo de Seguridad DGII</div>
+          {factura.codigoSeguridad && (
+            <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: "#111", letterSpacing: "0.1em" }}>
+              {factura.codigoSeguridad}
+            </div>
+          )}
           <div>Escanea para verificar en <strong>ecf.dgii.gov.do</strong></div>
-          <div style={{ fontStyle: "italic", color: "#9ca3af" }}>(Disponible tras firma digital)</div>
+          {!factura.urlQR && (
+            <div style={{ fontStyle: "italic", color: "#9ca3af" }}>(Disponible tras firma digital)</div>
+          )}
         </div>
       </div>
 

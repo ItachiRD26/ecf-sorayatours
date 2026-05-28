@@ -2,6 +2,7 @@
 
 import type { Factura } from "@/types";
 import { fmt, fmtDate, calcLinea, calcTotales } from "@/types";
+import { QRCodeSVG } from "qrcode.react";
 
 interface Props {
   factura: Factura;
@@ -148,12 +149,22 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
 
       {/* QR */}
       <div style={{ textAlign: "center", marginBottom: 8 }}>
-        <div style={{ display: "inline-flex", width: 72, height: 72, border: "2px dashed #aaa", alignItems: "center", justifyContent: "center", margin: "0 auto 4px" }}>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 26 }}>▦</div>
-            <div style={{ fontSize: 8, color: "#666" }}>QR DGII</div>
-          </div>
+        <div style={{ display: "inline-block", margin: "0 auto 4px" }}>
+          {factura.urlQR
+            ? <QRCodeSVG value={factura.urlQR} size={80} level="M" />
+            : <div style={{ display: "inline-flex", width: 72, height: 72, border: "2px dashed #aaa", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 26 }}>▦</div>
+                  <div style={{ fontSize: 8, color: "#666" }}>QR DGII</div>
+                </div>
+              </div>
+          }
         </div>
+        {factura.codigoSeguridad && (
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", marginBottom: 2 }}>
+            {factura.codigoSeguridad}
+          </div>
+        )}
         <div style={{ fontSize: 9, color: "#666" }}>Verifique en ecf.dgii.gov.do</div>
       </div>
 

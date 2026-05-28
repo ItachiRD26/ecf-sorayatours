@@ -7,7 +7,11 @@
       "Bash(git push *)",
       "WebFetch(domain:github.com)",
       "Bash(git clone *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\); const q=Object.keys\\({...p.dependencies,...p.devDependencies}\\).filter\\(k=>k.includes\\('qr'\\)\\); console.log\\(q\\)\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('qrcode.react'\\); console.log\\('ok'\\)\")",
+      "Bash(node -e \"const p=require\\('./node_modules/qrcode.react/package.json'\\); console.log\\(p.version\\)\")"
     ]
   }
 }
