@@ -168,12 +168,20 @@ export default function FacturasPage() {
     anuladas:   filtradas.filter((f) => f.estado === "anulada").length,
   };
 
+  const enviarDGIIById = async (facturaId: string): Promise<void> => {
+    const res  = await fetch("/api/dgii/emitir", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body:   JSON.stringify({ facturaId }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Error al enviar a DGII");
+  };
+
   const handleGuardar = async (data: Omit<Factura, "id">) => {
     setSaving(true);
     try {
       const facturaId = await agregar(data);
       if (data.terminos !== "Contado" && data.clienteId !== "walk-in") {
-        const t = calcTotales(data.items);
         const diasPlazo = parseInt(data.terminos) || 30;
         const vencDate  = new Date(); vencDate.setDate(vencDate.getDate() + diasPlazo);
         await agregarCuenta({
@@ -189,9 +197,13 @@ export default function FacturasPage() {
             : [],
         });
       }
+      await enviarDGIIById(facturaId);
       setShowNueva(false);
-      push({ tipo: "success", mensaje: `Factura ${data.eCF} emitida correctamente` });
-    } catch { push({ tipo: "error", mensaje: "Error al emitir la factura" }); }
+      push({ tipo: "success", mensaje: `${data.eCF} emitida y enviada a DGII` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      push({ tipo: "error", mensaje: msg });
+    }
     finally { setSaving(false); }
   };
 
@@ -207,11 +219,15 @@ export default function FacturasPage() {
   const handleNota = async (data: Omit<Factura, "id">) => {
     setSaving(true);
     try {
-      await agregar(data);
+      const facturaId = await agregar(data);
       if (showNota) await actualizar(showNota.factura.id, { eCFRef: data.eCF });
+      await enviarDGIIById(facturaId);
       setShowNota(null);
-      push({ tipo: "success", mensaje: `${data.tipoECF} emitida correctamente` });
-    } catch { push({ tipo: "error", mensaje: "Error al emitir la nota" }); }
+      push({ tipo: "success", mensaje: `${data.tipoECF} emitida y enviada a DGII` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      push({ tipo: "error", mensaje: msg });
+    }
     finally { setSaving(false); }
   };
 

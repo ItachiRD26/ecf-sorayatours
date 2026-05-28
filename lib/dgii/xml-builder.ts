@@ -583,10 +583,11 @@ function buildE47(f: Factura, e: EmpresaConfig, fh: string): string {
 }
 
 // ── RFCE — Resumen E32 < RD$250,000 ──────────────────────────────
-function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = ""): string {
+function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = "", cliente?: Cliente): string {
   const t       = calcTotales(f.items);
   const exentos = f.items.filter(i => i.itbis === 0).reduce((s, i) => s + calcLinea(i).sub, 0);
   const grav    = t.sub - exentos;
+  const nombreComprador = escapeXml(cliente?.nombre ?? f.nombreConsumidor ?? "CONSUMIDOR FINAL");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <RFCE>
   <Encabezado>
@@ -599,7 +600,7 @@ function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = ""): 
     </IdDoc>
     ${buildEmisorRFCE(e, f.fecha)}
     <Comprador>
-      <RazonSocialComprador>CONSUMIDOR FINAL</RazonSocialComprador>
+      <RazonSocialComprador>${nombreComprador}</RazonSocialComprador>
     </Comprador>
     <Totales>
       <MontoGravadoTotal>${fmt(grav)}</MontoGravadoTotal>
@@ -633,8 +634,8 @@ export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: Empr
   }
 }
 
-export function buildRFCEXml(f: Factura, empresa: EmpresaConfig, codigoSeguridad?: string): string {
-  return buildRFCE(f, empresa, codigoSeguridad ?? "");
+export function buildRFCEXml(f: Factura, empresa: EmpresaConfig, codigoSeguridad?: string, cliente?: Cliente): string {
+  return buildRFCE(f, empresa, codigoSeguridad ?? "", cliente);
 }
 
 export const LIMITE_RFCE = 250_000;

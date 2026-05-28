@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
       // La factura completa se sube manualmente al portal de DGII después de que el resumen sea aceptado
       // CodigoSeguridadeCF = primeros 6 chars del SignatureValue del ECF (no SHA256)
       const codigoSeguridadRFCE = signatureValue.substring(0, 6);
-      const rfceXml     = buildRFCEXml(factura, empresa, codigoSeguridadRFCE); // CodigoSeguridadeCF requerido por XSD
+      const rfceXml     = buildRFCEXml(factura, empresa, codigoSeguridadRFCE, cliente); // CodigoSeguridadeCF requerido por XSD
       const rfceFirmado = await firmarXML(rfceXml);
       const resultado   = await enviarRFCE(rfceFirmado, tokenManual, factura.eCF);
 
