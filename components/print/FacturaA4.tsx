@@ -25,101 +25,155 @@ const DEFAULT_EMPRESA = {
   firmaVendedor: "Preparado por",
 };
 
+const COD_MOD_E34: Record<string, string> = {
+  "1": "Descuento",
+  "2": "Corrige Texto",
+  "3": "Devolucion",
+  "4": "Corrige montos del NCF modificado",
+};
+const COD_MOD_E33: Record<string, string> = {
+  "1": "Mora", "2": "Corrige Texto", "3": "Descuento",
+  "4": "Gastos", "5": "Interes", "6": "Otros",
+};
+
+function descModificacion(tipoECF: string, cod?: string, motivo?: string): string {
+  if (motivo) return motivo;
+  const map = tipoECF === "E33" ? COD_MOD_E33 : COD_MOD_E34;
+  return map[cod ?? ""] ?? "Corrige montos del NCF modificado";
+}
+
+function fmtFechaFirma(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA }: Props) {
-  const esNota    = factura.tipoECF === "E33" || factura.tipoECF === "E34";
-  const esCredito = factura.tipoECF === "E34";
-  const e         = { ...DEFAULT_EMPRESA, ...empresa };
-  const t         = calcTotales(factura.items);
+  const esNota = factura.tipoECF === "E33" || factura.tipoECF === "E34";
+  const esE32  = factura.tipoECF === "E32";
+  const esE41  = factura.tipoECF === "E41";
+  const e      = { ...DEFAULT_EMPRESA, ...empresa };
+  const t      = calcTotales(factura.items);
 
   const headerColor =
     factura.tipoECF === "E31" ? "#0e7490" :
     factura.tipoECF === "E32" ? "#374151" :
-    esCredito                 ? "#166534" :
-    esNota                    ? "#92400e" : "#111";
+    factura.tipoECF === "E34" ? "#166534" :
+    factura.tipoECF === "E33" ? "#92400e" :
+    factura.tipoECF === "E41" ? "#7c3aed" : "#0e7490";
 
   const titulo =
-    factura.tipoECF === "E32" ? "Factura de Consumo Electronica" :
-    factura.tipoECF === "E34" ? "Nota de Credito Electronica (E34)" :
-    factura.tipoECF === "E33" ? "Nota de Debito Electronica (E33)" :
+    esE32                     ? "Factura de Consumo Electronica" :
+    factura.tipoECF === "E34" ? "Nota de Credito Electronica" :
+    factura.tipoECF === "E33" ? "Nota de Debito Electronica"  :
+    factura.tipoECF === "E41" ? "Comprobante de Compras (E41)" :
+    factura.tipoECF === "E43" ? "Gastos Menores (E43)"         :
+    factura.tipoECF === "E44" ? "Regimen Especial (E44)"       :
+    factura.tipoECF === "E45" ? "Gubernamental (E45)"          :
+    factura.tipoECF === "E46" ? "Exportaciones (E46)"          :
+    factura.tipoECF === "E47" ? "Pagos al Exterior (E47)"      :
     "Factura de Credito Fiscal Electronica";
+
+  const compradorLabel = esE41 ? "Proveedor" : "Cliente";
+
+  // Determinar si hay comprador que mostrar
+  const tieneComprador = !esE32 || !factura.esConsumidorFinal || !!factura.nombreConsumidor || !!cliente;
 
   return (
     <div style={{ fontFamily: sans, color: "#111", width: "100%" }}>
 
-      {/* Header empresa */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: 16, marginBottom: 16, borderBottom: ("3px solid " + headerColor) }}>
+      {/* ── ENCABEZADO ── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", paddingBottom: 14, marginBottom: 14, borderBottom: "3px solid " + headerColor }}>
+
+        {/* Izquierda: empresa + fecha emisión */}
         <div>
-          <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 700, color: "#111", marginBottom: 6 }}>{e.nombre}</div>
+          <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 700, color: "#111", marginBottom: 5 }}>{e.nombre}</div>
           <div style={{ fontSize: 11, color: "#555", lineHeight: 1.9 }}>
             <div>RNC: <strong style={{ fontFamily: mono }}>{e.rnc}</strong></div>
             {e.direccion && <div>{e.direccion}</div>}
             {e.telefono  && <div>Tel: {e.telefono}</div>}
+            <div><strong>Fecha Emision:</strong> {fmtDate(factura.fecha)}</div>
           </div>
         </div>
+
+        {/* Derecha: tipo + e-NCF + datos específicos por tipo */}
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, textTransform: "uppercase", color: headerColor, marginBottom: 8 }}>
+          <div style={{ fontFamily: serif, fontSize: 13, fontWeight: 700, textTransform: "uppercase", color: headerColor, marginBottom: 6 }}>
             {titulo}
           </div>
-          <div style={{ fontSize: 11, color: "#444", lineHeight: 2.1, fontFamily: mono }}>
+          <div style={{ fontSize: 11, color: "#444", lineHeight: 2, fontFamily: mono }}>
             <div><strong>e-NCF:</strong> {factura.eCF}</div>
-            {factura.eCFRef && <div><strong>Ref. e-CF:</strong> {factura.eCFRef}</div>}
-            <div><strong>Fecha:</strong> {fmtDate(factura.fecha)}</div>
-            <div><strong>Venc. NCF:</strong> {fmtDate(factura.vencimientoECF)}</div>
-            <div><strong>Terminos:</strong> {factura.terminos === "Contado" ? "Contado" : ("Credito " + factura.terminos)}</div>
-            {factura.metodoPago && <div><strong>Pago:</strong> {factura.metodoPago}</div>}
+
+            {/* E33/E34: NCF modificado + descripción */}
+            {esNota && factura.eCFRef && (
+              <>
+                <div><strong>NCF Modificado:</strong> {factura.eCFRef}</div>
+                <div style={{ fontStyle: "italic", color: headerColor, fontSize: 10, fontFamily: sans }}>
+                  {descModificacion(factura.tipoECF, factura.codigoModificacion, factura.motivoNota)}
+                </div>
+              </>
+            )}
+
+            {/* No-notas y no-E32: fecha vencimiento y términos */}
+            {!esNota && !esE32 && (
+              <div><strong>Fecha Vencimiento:</strong> {fmtDate(factura.vencimientoECF)}</div>
+            )}
+            {!esNota && (
+              <div><strong>Terminos:</strong> {factura.terminos === "Contado" ? "Contado" : "Credito " + factura.terminos}</div>
+            )}
+            {factura.metodoPago && (
+              <div><strong>Pago:</strong> {factura.metodoPago}</div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Nota banner */}
-      {esNota && (
-        <div style={{ background: esCredito ? "#f0faf4" : "#fffbeb", border: ("1px solid " + headerColor), borderRadius: 4, padding: "10px 14px", marginBottom: 14, fontSize: 11, textAlign: "center" }}>
-          <div style={{ fontWeight: 700, color: headerColor }}>{titulo}</div>
-          {factura.eCFRef && (
-            <div style={{ fontSize: 10, color: "#555", marginTop: 2 }}>
-              Modifica e-CF: <strong style={{ fontFamily: mono }}>{factura.eCFRef}</strong>
-              {factura.motivoNota ? (" -- " + factura.motivoNota) : ""}
-            </div>
+      {/* ── COMPRADOR / PROVEEDOR ── */}
+      {tieneComprador && (
+        <div style={{ marginBottom: 14, fontSize: 11, lineHeight: 1.9, borderBottom: "1px solid #e5e7eb", paddingBottom: 10 }}>
+          {factura.esConsumidorFinal ? (
+            <>
+              <div><strong>Razon Social {compradorLabel}:</strong> {factura.nombreConsumidor ?? "Consumidor Final"}</div>
+              {factura.telefonoConsumidor && <div>Tel: {factura.telefonoConsumidor}</div>}
+            </>
+          ) : cliente ? (
+            <>
+              <div><strong>Razon Social {compradorLabel}:</strong> {cliente.nombre}</div>
+              {cliente.rnc       && <div><strong>RNC {compradorLabel}:</strong> <span style={{ fontFamily: mono }}>{cliente.rnc}</span></div>}
+              {cliente.direccion && <div>{cliente.direccion}{cliente.ciudad ? ", " + cliente.ciudad : ""}</div>}
+              {cliente.telefono  && <div>Tel: {cliente.telefono}</div>}
+            </>
+          ) : factura.nombreConsumidor ? (
+            <div><strong>Razon Social {compradorLabel}:</strong> {factura.nombreConsumidor}</div>
+          ) : null}
+
+          {/* E47: identificador extranjero */}
+          {factura.tipoECF === "E47" && factura.idTransaccion && (
+            <div><strong>ID Extranjero:</strong> <span style={{ fontFamily: mono }}>{factura.idTransaccion}</span></div>
           )}
         </div>
       )}
 
-      {/* Cliente */}
-      <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 4, padding: "12px 16px", marginBottom: 16, fontSize: 11, lineHeight: 1.9 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-          Cliente
-        </div>
-        {factura.esConsumidorFinal ? (
-          <>
-            <div><strong>Consumidor Final</strong></div>
-            {factura.nombreConsumidor   && <div>{factura.nombreConsumidor}</div>}
-            {factura.telefonoConsumidor && <div>Tel: {factura.telefonoConsumidor}</div>}
-          </>
-        ) : (
-          <>
-            <div><strong>{cliente?.nombre}</strong></div>
-            {cliente?.rnc      && <div>RNC: <span style={{ fontFamily: mono }}>{cliente.rnc}</span></div>}
-            {cliente?.direccion && <div>{cliente.direccion}{cliente.ciudad ? (", " + cliente.ciudad) : ""}</div>}
-            {cliente?.telefono  && <div>Tel: {cliente.telefono}</div>}
-          </>
-        )}
-      </div>
-
-      {/* Tabla — Cant | Descripcion | PAX | Modo | Precio | Desc. | ITBIS | Total */}
+      {/* ── TABLA DE ITEMS ── */}
       <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 16, fontSize: 11 }}>
         <thead>
           <tr style={{ background: headerColor }}>
-            {[
-              { h: "Cant.", align: "center" },
-              { h: "Descripcion / Servicio", align: "left" },
-              { h: "PAX", align: "center" },
-              { h: "Modo", align: "left" },
-              { h: "Precio", align: "right" },
-              { h: "Desc. RD$", align: "right" },
-              { h: "ITBIS", align: "right" },
-              { h: "Total", align: "right" },
-            ].map(({ h, align }, i) => (
-              <th key={h} style={{ padding: "8px 10px", color: "#fff", fontSize: 10, fontWeight: 600, textAlign: align as "left" | "right" | "center", borderRight: i < 7 ? "1px solid rgba(255,255,255,0.12)" : "none" }}>{h}</th>
+            {([
+              { h: "Cantidad",    align: "center", w: "7%"   },
+              { h: "Descripcion", align: "left",   w: "auto" },
+              { h: "PAX",         align: "center", w: "6%"   },
+              { h: "Modo",        align: "left",   w: "10%"  },
+              { h: "Precio",      align: "right",  w: "13%"  },
+              { h: "Desc. RD$",   align: "right",  w: "10%"  },
+              { h: "ITBIS",       align: "right",  w: "10%"  },
+              { h: "Valor",       align: "right",  w: "12%"  },
+            ] as const).map(({ h, align, w }, i) => (
+              <th key={h} style={{
+                padding: "8px 10px", color: "#fff", fontSize: 10, fontWeight: 600,
+                textAlign: align, width: w,
+                borderRight: i < 7 ? "1px solid rgba(255,255,255,0.12)" : "none",
+              }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -127,18 +181,16 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
           {factura.items.map((item: LineaServicio, i: number) => {
             const c = calcLinea(item);
             const precioLabel = item.modo === "por_grupo"
-              ? ("RD$ " + fmt(item.precio) + " (grupo)")
-              : ("RD$ " + fmt(item.precio) + "/p.");
+              ? "RD$ " + fmt(item.precio) + " (grupo)"
+              : "RD$ " + fmt(item.precio) + "/p.";
             return (
               <tr key={i} style={{ background: i % 2 === 0 ? "#fff" : "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                {/* Cant = 1 siempre */}
-                <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700 }}>1</td>
+                <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700 }}>{item.cant || 1}</td>
                 <td style={{ padding: "8px 10px" }}>
                   <div style={{ fontWeight: 500 }}>{item.descripcion}</div>
                   {item.tramoLabel && <div style={{ fontSize: 9, color: "#9ca3af" }}>{item.tramoLabel}</div>}
-                  {item.fechaTour  && <div style={{ fontSize: 9, color: "#6b7280" }}>{"Fecha: " + fmtDate(item.fechaTour)}</div>}
+                  {item.fechaTour  && <div style={{ fontSize: 9, color: "#6b7280" }}>Fecha: {fmtDate(item.fechaTour)}</div>}
                 </td>
-                {/* PAX = numero de personas */}
                 <td style={{ padding: "8px 10px", textAlign: "center", fontFamily: mono, fontWeight: 700, color: "#0e7490", fontSize: 13 }}>
                   {item.pax || item.cant}
                 </td>
@@ -147,7 +199,9 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
                 </td>
                 <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, fontSize: 10, color: "#374151" }}>{precioLabel}</td>
                 <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono }}>
-                  {c.descAmt > 0 ? <span style={{ color: "#dc2626" }}>{fmt(c.descAmt)}</span> : <span style={{ color: "#d1d5db" }}>---</span>}
+                  {c.descAmt > 0
+                    ? <span style={{ color: "#dc2626" }}>{fmt(c.descAmt)}</span>
+                    : <span style={{ color: "#d1d5db" }}>---</span>}
                 </td>
                 <td style={{ padding: "8px 10px", textAlign: "right", fontFamily: mono, color: "#1d4ed8" }}>
                   {item.itbis > 0 ? fmt(c.itbisAmt) : "Exento"}
@@ -159,28 +213,31 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
         </tbody>
       </table>
 
-      {/* Totales */}
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 24 }}>
+      {/* ── TOTALES (estilo DGII: Subtotal Gravado / Total ITBIS / Total) ── */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
         <div style={{ width: 300, fontSize: 11 }}>
-          {[
-            { l: "Total Bruto",  v: fmt(t.bruto), c: "#374151" },
-            { l: "Descuentos",   v: fmt(t.desc),  c: "#dc2626" },
-            { l: "Sub Total",    v: fmt(t.sub),   c: "#374151" },
-            { l: "Total ITBIS",  v: fmt(t.itbis), c: "#1d4ed8" },
-          ].map(({ l, v, c }) => (
-            <div key={l} style={{ display: "flex", justifyContent: "space-between", padding: "5px 10px", borderBottom: "1px solid #e5e7eb" }}>
-              <span style={{ color: "#555" }}>{l}:</span>
-              <span style={{ fontFamily: mono, fontWeight: 600, color: c }}>{v}</span>
+          {t.desc > 0 && (
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 10px", borderBottom: "1px solid #e5e7eb" }}>
+              <span style={{ color: "#555" }}>Descuentos:</span>
+              <span style={{ fontFamily: mono, fontWeight: 600, color: "#dc2626" }}>{fmt(t.desc)}</span>
             </div>
-          ))}
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 10px", borderBottom: "1px solid #e5e7eb" }}>
+            <span style={{ color: "#555" }}>Subtotal Gravado:</span>
+            <span style={{ fontFamily: mono, fontWeight: 600 }}>{fmt(t.sub)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "5px 10px", borderBottom: "1px solid #e5e7eb" }}>
+            <span style={{ color: "#555" }}>Total ITBIS:</span>
+            <span style={{ fontFamily: mono, fontWeight: 600, color: "#1d4ed8" }}>{fmt(t.itbis)}</span>
+          </div>
           <div style={{ display: "flex", justifyContent: "space-between", padding: "9px 12px", background: headerColor, borderRadius: 3, marginTop: 4 }}>
-            <span style={{ fontWeight: 700, color: "#fff" }}>TOTAL RD$:</span>
+            <span style={{ fontWeight: 700, color: "#fff" }}>Total:</span>
             <span style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "#fff" }}>{fmt(t.total)}</span>
           </div>
         </div>
       </div>
 
-      {/* Notas */}
+      {/* Notas libres */}
       {factura.notas && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, padding: "10px 14px", marginBottom: 20, fontSize: 11, color: "#92400e" }}>
           <div style={{ fontWeight: 700, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Notas</div>
@@ -188,17 +245,8 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
         </div>
       )}
 
-      {/* Firma centrada */}
-      <div style={{ display: "flex", justifyContent: "center", paddingTop: 52, borderTop: "1px solid #d1d5db", marginBottom: 16 }}>
-        <div style={{ width: "42%", textAlign: "center" }}>
-          <div style={{ height: 1, background: "#374151", marginBottom: 8 }} />
-          <div style={{ fontSize: 11, color: "#555" }}>{e.firmaVendedor || "Preparado por"}</div>
-          <div style={{ fontSize: 9, color: "#9ca3af", marginTop: 2 }}>Firma Autorizada</div>
-        </div>
-      </div>
-
-      {/* QR */}
-      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 16 }}>
+      {/* ── QR + CÓDIGO DE SEGURIDAD (formato DGII) ── */}
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", marginBottom: 14 }}>
         <div style={{ width: 80, height: 80, flexShrink: 0 }}>
           {factura.urlQR
             ? <QRCodeSVG value={factura.urlQR} size={80} level="M" />
@@ -208,21 +256,20 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
               </div>
           }
         </div>
-        <div style={{ fontSize: 10, color: "#555", lineHeight: 1.8 }}>
-          <div style={{ fontWeight: 700, color: "#374151" }}>Codigo de Seguridad DGII</div>
+        <div style={{ fontSize: 10, color: "#374151", lineHeight: 1.9 }}>
           {factura.codigoSeguridad && (
-            <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: "#111", letterSpacing: "0.1em" }}>
-              {factura.codigoSeguridad}
-            </div>
+            <div>Codigo de Seguridad: <strong style={{ fontFamily: mono }}>{factura.codigoSeguridad}</strong></div>
           )}
-          <div>Escanea para verificar en <strong>ecf.dgii.gov.do</strong></div>
-          {!factura.urlQR && (
+          {factura.fechaEnvioDGII && (
+            <div>Fecha Firma: <span style={{ fontFamily: mono }}>{fmtFechaFirma(factura.fechaEnvioDGII)}</span></div>
+          )}
+          {!factura.urlQR && !factura.codigoSeguridad && (
             <div style={{ fontStyle: "italic", color: "#9ca3af" }}>(Disponible tras firma digital)</div>
           )}
         </div>
       </div>
 
-      {/* Pie */}
+      {/* ── PIE ── */}
       <div style={{ paddingTop: 10, borderTop: "1px dashed #d1d5db", display: "flex", justifyContent: "space-between", fontSize: 9, color: "#9ca3af" }}>
         <div>Comprobante Fiscal Electronico (e-CF) emitido conforme a DGII</div>
         <div>Verifique en ecf.dgii.gov.do</div>

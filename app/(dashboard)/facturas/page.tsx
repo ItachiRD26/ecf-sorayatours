@@ -220,7 +220,6 @@ export default function FacturasPage() {
     setSaving(true);
     try {
       const facturaId = await agregar(data);
-      if (showNota) await actualizar(showNota.factura.id, { eCFRef: data.eCF });
       await enviarDGIIById(facturaId);
       setShowNota(null);
       push({ tipo: "success", mensaje: `${data.tipoECF} emitida y enviada a DGII` });
