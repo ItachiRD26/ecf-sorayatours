@@ -9,8 +9,6 @@
 //    ECF:  ecf.dgii.gov.do/ecf/ConsultaTimbre      — params PascalCase, fechas ddMMyyyy
 //    RFCE: fc.dgii.gov.do/eCF/ConsultaTimbreFC     — params PascalCase, sin fechas
 
-import * as forge from "node-forge";
-
 interface QRParams {
   tipoECF:        string;
   rncEmisor:      string;
@@ -31,11 +29,11 @@ function esProduccion(): boolean {
   return getAmb() === "ecf";
 }
 
-// Los primeros 6 caracteres del SHA-256 del SignatureValue
+// Primeros 6 caracteres del SignatureValue (base64 del RSA) — NO es SHA-256
+// Confirmado por ejemplos certecf DGII: el valor contiene chars base64 (ej: "FFgkKR")
+// El RFCE ya usaba este mismo método desde antes (signatureValue.substring(0,6))
 export function calcularCodigoSeguridad(signatureValue: string): string {
-  const md = forge.md.sha256.create();
-  md.update(signatureValue, "utf8");
-  return md.digest().toHex().substring(0, 6);
+  return signatureValue.substring(0, 6);
 }
 
 // Construye query string con encodeURIComponent (%20 para espacios — RFC 3986)
