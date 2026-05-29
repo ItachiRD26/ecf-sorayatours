@@ -29,7 +29,7 @@ type Formato = "a4" | "88mm";
 
 const DEFAULT_EMPRESA: EmpresaConfig = {
   nombre:        "SORAYA Y LEONARDO TOURS SRL",
-  rnc:           "1-31217656-6",
+  rnc:           "131-21765-6",
   direccion:     "Playa Juan de Bolanos Bugalow #3, Montecristi",
   telefono:      "809-961-6343",
   firmaVendedor: "Preparado por",
@@ -78,14 +78,19 @@ export default function PrintModal({ factura, cliente, empresa = DEFAULT_EMPRESA
 <html><head><meta charset="utf-8"/>
 <title>e-CF ${factura.eCF}</title>
 <style>
+  :root {
+    --font-sans:  Arial, Helvetica, sans-serif;
+    --font-mono:  'Courier New', Courier, monospace;
+    --font-serif: Georgia, 'Times New Roman', serif;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: Arial, Helvetica, sans-serif; background: #fff; color: #000; }
-  @page { size: ${esTermica ? "88mm auto" : "A4"}; margin: ${esTermica ? "0" : "12mm 15mm"}; }
+  @page { size: ${esTermica ? "88mm auto" : "A4"}; margin: ${esTermica ? "4mm" : "12mm 15mm"}; }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style></head><body>${contenido.innerHTML}</body></html>`);
     win.document.close();
     win.focus();
-    setTimeout(() => { win.print(); win.close(); }, 500);
+    setTimeout(() => { win.print(); win.close(); }, 600);
   };
 
   if (!mounted) return null;
@@ -130,10 +135,9 @@ export default function PrintModal({ factura, cliente, empresa = DEFAULT_EMPRESA
             borderRadius: 6,
             width:        "100%",
             maxWidth:     maxWidth,
-            margin:       "auto",
             boxShadow:    "0 24px 80px rgba(0,0,0,0.3)",
-            overflow:     "hidden",
             flexShrink:   0,
+            // overflow: "hidden" eliminado — cortaba facturas largas
           }}
         >
 
@@ -240,18 +244,22 @@ export default function PrintModal({ factura, cliente, empresa = DEFAULT_EMPRESA
                 style={{
                   padding:    formato === "88mm" ? "20px" : "28px 32px",
                   background: "#f3f4f6",
-                  display:    "flex",
-                  justifyContent: "center",
                 }}
               >
-                <div style={{ background: "#fff", boxShadow: "0 2px 12px rgba(0,0,0,0.1)", borderRadius: 2 }}>
-                  {formato === "a4" ? (
+                {formato === "a4" ? (
+                  // A4: llena todo el ancho disponible del contenedor
+                  <div style={{ background: "#fff", boxShadow: "0 2px 12px rgba(0,0,0,0.1)", borderRadius: 2, padding: "24px 28px" }}>
                     <FacturaA4 factura={factura} cliente={cliente} empresa={empresa} />
-                  ) : (
-                    <FacturaTermica factura={factura} cliente={cliente}
-                      empresa={{ nombre: empresa.nombre, rnc: empresa.rnc, direccion: empresa.direccion, telefono: empresa.telefono }} />
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  // Térmica: centrada, ancho fijo
+                  <div style={{ display: "flex", justifyContent: "center" }}>
+                    <div style={{ background: "#fff", boxShadow: "0 2px 12px rgba(0,0,0,0.1)", borderRadius: 2 }}>
+                      <FacturaTermica factura={factura} cliente={cliente}
+                        empresa={{ nombre: empresa.nombre, rnc: empresa.rnc, direccion: empresa.direccion, telefono: empresa.telefono }} />
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}

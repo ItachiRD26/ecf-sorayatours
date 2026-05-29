@@ -68,7 +68,7 @@ export default function LoginPage() {
           Soraya & Leonardo Tours
         </div>
         <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, fontFamily: mono }}>
-          RNC 1-31217656-6 · Montecristi
+          RNC 131-21765-6 · Montecristi
         </div>
         <div style={{
           marginTop: 10, display: "inline-block", background: "#ecfeff", color: "#0e7490",

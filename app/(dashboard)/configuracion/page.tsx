@@ -27,7 +27,7 @@ interface EmpresaConfig {
 
 const DEFAULTS: EmpresaConfig = {
   nombre:         "Soraya y Leonardo Tours SRL",
-  rnc:            "1-31217656-6",
+  rnc:            "131-21765-6",
   direccion:      "Playa Juan de Bolanos Bugalow #3, Montecristi",
   telefono:       "809-961-6343",
   email:          "",

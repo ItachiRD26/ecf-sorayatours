@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse }                    from "next/server";
 import { adminAuth, adminDb }                           from "@/lib/firebase-admin";
-import { buildXML, buildRFCEXml, LIMITE_RFCE }         from "@/lib/dgii/xml-builder";
+import { buildXML, buildRFCEXml, LIMITE_RFCE, fmtRNC } from "@/lib/dgii/xml-builder";
 import { firmarXML }                                    from "@/lib/dgii/xml-signer";
 import { enviarECF, enviarRFCE }                        from "@/lib/dgii/dgii-client";
 import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     // Fallback con datos reales si config/empresa no existe en Firestore todavía
     const EMPRESA_FALLBACK = {
       nombre:    "SORAYA Y LEONARDO TOURS SRL",
-      rnc:       "1-31217656-6",
+      rnc:       "131-21765-6",
       direccion: "Playa Juan de Bolanos Bugalow #3, Montecristi",
       telefono:  "809-961-6343",
     };
@@ -118,8 +118,8 @@ export async function POST(req: NextRequest) {
     const fechaFirma   = formatFechaHoraQR(new Date().toISOString());
     const urlQR = generarURLQR({
       tipoECF:       factura.tipoECF,
-      rncEmisor:     empresa.rnc.replace(/\D/g, ""),
-      rncComprador:  cliente?.rnc?.replace(/\D/g, ""),
+      rncEmisor:     fmtRNC(empresa.rnc),
+      rncComprador:  cliente?.rnc ? fmtRNC(cliente.rnc) : undefined,
       eNCF:          factura.eCF,
       fechaEmision,
       montoTotal:    totales.total,

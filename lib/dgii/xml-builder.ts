@@ -17,10 +17,11 @@ function getTipoPago(terminos: string): string {
 }
 
 // Normaliza RNC → solo dígitos, 9 u 11 chars
-function fmtRNC(rnc: string): string {
+// Exportado para que lo usen qr-builder y otros módulos
+export function fmtRNC(rnc: string): string {
   const d = rnc.replace(/\D/g, "");
   if (d.length === 9 || d.length === 11) return d;
-  if (d.length === 10) return d.substring(0, 9);
+  if (d.length === 10) return d.substring(0, 9);  // quita dígito verificador
   return d;
 }
 

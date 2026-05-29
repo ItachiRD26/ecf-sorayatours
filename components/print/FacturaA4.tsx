@@ -19,7 +19,7 @@ interface Props {
 
 const DEFAULT_EMPRESA = {
   nombre:        "SORAYA Y LEONARDO TOURS SRL",
-  rnc:           "1-31217656-6",
+  rnc:           "131-21765-6",
   direccion:     "Playa Juan de Bolanos Bugalow #3, Montecristi",
   telefono:      "809-961-6343",
   firmaVendedor: "Preparado por",

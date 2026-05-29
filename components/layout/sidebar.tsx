@@ -70,7 +70,7 @@ export default function Sidebar() {
             </div>
           </div>
           <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: mono, marginBottom: 6 }}>
-            RNC 1-31217656-6
+            RNC 131-21765-6
           </div>
           <div style={{
             display: "inline-block", background: "#ecfeff", color: "#0e7490",

@@ -45,13 +45,14 @@ function DgiiBadge({ estado }: { estado?: string }) {
 }
 
 // ── Menu de acciones ──────────────────────────────────────────────
-function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII }: {
+function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII, onRegenerarQR }: {
   factura:         Factura;
   onVer:           () => void;
   onNota:          (tipo: "E33" | "E34") => void;
   onEstado:        (estado: import("@/types").EstadoFactura) => void;
   onEnviarDGII:    () => void;
   onConsultarDGII: () => void;
+  onRegenerarQR:   () => void;
 }) {
   const [open,    setOpen]    = useState(false);
   const [pos,     setPos]     = useState({ top: 0, right: 0 });
@@ -82,9 +83,11 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
     setOpen(v => !v);
   };
 
-  const anulada       = factura.estado === "anulada";
-  const yaEnviada     = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
+  const anulada        = factura.estado === "anulada";
+  const yaEnviada      = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
   const puedeConsultar = !!factura.trackIdDGII;
+  // URL vieja si FechaFirma tiene guiones (dd-MM-yyyy) en vez de ddMMyyyy
+  const urlVieja = !!factura.urlQR && /[?&]FechaFirma=\d{2}-\d{2}-\d{4}/.test(factura.urlQR);
 
   const item = (label: string, color: string, onClick: () => void, disabled = false) => (
     <button key={label} type="button" onClick={() => { if (!disabled) { onClick(); setOpen(false); } }} disabled={disabled}
@@ -102,6 +105,7 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
       {/* Acciones DGII */}
       {!anulada && !yaEnviada && item("📤 Enviar a DGII", "#0e7490", onEnviarDGII)}
       {puedeConsultar && item("🔍 Consultar estado DGII", "#1d4ed8", onConsultarDGII)}
+      {urlVieja && item("🔄 Regenerar QR (formato DGII)", "#7c3aed", onRegenerarQR)}
       <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
       {item("📋 Nota de Débito (E33)",  "#374151", () => onNota("E33"), anulada)}
       {item("📋 Nota de Crédito (E34)", "#374151", () => onNota("E34"), anulada)}
@@ -253,6 +257,25 @@ export default function FacturasPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error desconocido";
       push({ tipo: "error", mensaje: `Error DGII: ${msg}` });
+    } finally {
+      setEnviando(null);
+    }
+  };
+
+  // ── Regenerar QR (facturas con URL en formato viejo) ─────────
+  const handleRegenerarQR = async (factura: Factura) => {
+    setEnviando(factura.id);
+    try {
+      const res = await fetch("/api/dgii/regenerar-qr", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ facturaId: factura.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error al regenerar QR");
+      push({ tipo: "success", mensaje: `QR de ${factura.eCF} regenerado con formato correcto` });
+    } catch (err: unknown) {
+      push({ tipo: "error", mensaje: err instanceof Error ? err.message : "Error regenerando QR" });
     } finally {
       setEnviando(null);
     }
@@ -457,6 +480,7 @@ export default function FacturasPage() {
                         onEstado={(estado) => handleEstado(f, estado)}
                         onEnviarDGII={() => handleEnviarDGII(f)}
                         onConsultarDGII={() => handleConsultarDGII(f)}
+                        onRegenerarQR={() => handleRegenerarQR(f)}
                       />
                     </td>
                   </tr>
