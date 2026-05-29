@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse }                    from "next/server";
 import { adminAuth, adminDb }                           from "@/lib/firebase-admin";
-import { generarURLQR, formatFechaQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
+import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
 import { fmtRNC }                                                from "@/lib/dgii/xml-builder";
 import { calcTotales }                                  from "@/types";
 import type { Factura }                                 from "@/types";
@@ -20,11 +20,10 @@ async function verificarSesion(req: NextRequest): Promise<boolean> {
   catch { return false; }
 }
 
-// Detecta si una URL ya tiene el formato nuevo (ddMMyyyy sin guiones)
-function tieneFormatoNuevo(urlQR: string): boolean {
-  // Buscar FechaFirma= seguido de un número sin guiones (ddMMyyyy = 8 dígitos seguidos)
-  return /[?&]FechaFirma=\d{8}/.test(urlQR) || /[?&]FechaEmision=\d{8}/.test(urlQR);
-}
+// Con tantos cambios (codigoSeguridad, formato fechas, URL path, orden params)
+// prácticamente todas las URLs existentes necesitan regeneración.
+// Usamos force:true para regenerar todas. Esta función ya no es confiable.
+function tieneFormatoNuevo(_urlQR: string): boolean { return false; }
 
 // Extrae SignatureValue del XML firmado
 function extraerSignature(xmlFirmado: string): string {
@@ -32,19 +31,16 @@ function extraerSignature(xmlFirmado: string): string {
   return m?.[1]?.replace(/\s/g, "") ?? "";
 }
 
-// Extrae FechaHoraFirma del XML (dd-MM-YYYY HH:mm:ss)
-function extraerFechaFirma(xmlFirmado: string): string {
+// Extrae FechaHoraFirma del XML y la devuelve como ISO para pasarla a formatFechaHoraQR
+function extraerFechaFirmaISO(xmlFirmado: string): string {
   const m = xmlFirmado.match(/<FechaHoraFirma>([\s\S]*?)<\/FechaHoraFirma>/);
   if (!m) return "";
-  const raw = m[1].trim(); // "27-05-2026 01:06:40"
-  // Convertir dd-MM-YYYY → YYYY-MM-DD para new Date()
-  const parts = raw.split(" ");
-  if (parts.length < 2) return "";
-  const [dmy, time] = parts;
-  const [d, mo, y]  = dmy.split("-");
+  const raw = m[1].trim(); // "dd-MM-yyyy HH:mm:ss"
+  const [dmy, time] = raw.split(" ");
+  if (!dmy || !time) return "";
+  const [d, mo, y] = dmy.split("-");
   if (!d || !mo || !y) return "";
-  // formatFechaHoraQR espera formato ddMMyyyy HH:mm:ss (nuevo)
-  return `${d}${mo}${y} ${time}`;
+  return `${y}-${mo}-${d}T${time}`; // ISO-like para formatFechaHoraQR
 }
 
 async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: string; error?: string }> {
@@ -67,15 +63,10 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
   const totales = calcTotales(factura.items);
   const esRFCE  = factura.tipoECF === "E32" && totales.total < LIMITE_RFCE;
 
-  // Extraer FechaFirma del XML (ya en formato ddMMyyyy HH:mm:ss)
-  const fechaFirmaFromXml = extraerFechaFirma(factura.xmlFirmado);
-  // Si no está en el XML, usar fechaEnvioDGII como fallback
-  const fechaFirmaFinal = fechaFirmaFromXml || (() => {
-    if (!factura.fechaEnvioDGII) return "";
-    const d   = new Date(factura.fechaEnvioDGII);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${pad(d.getDate())}${pad(d.getMonth()+1)}${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-  })();
+  // FechaFirma: del XML → fallback a fechaEnvioDGII
+  // formatFechaHoraQR aplica el formato correcto según DGII_AMBIENTE (certecf/ecf)
+  const fechaISO = extraerFechaFirmaISO(factura.xmlFirmado) || factura.fechaEnvioDGII || "";
+  const fechaFirmaFinal = fechaISO ? formatFechaHoraQR(fechaISO) : "";
 
   // Cargar cliente para RncComprador
   // Validar que clienteId sea un ID simple sin "/" (algunos cert tienen "N/A" u otros placeholders)

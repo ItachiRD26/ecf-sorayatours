@@ -1,39 +1,28 @@
 // Genera las URLs del Timbre Electrónico DGII
-// El formato varía según el entorno (DGII_AMBIENTE):
 //
-//  certecf / testecf (certificación):
-//    ECF:  ecf.dgii.gov.do/CerteCF/consultatimbre  — params minúsculas, fechas dd-MM-yyyy
-//    RFCE: ecf.dgii.gov.do/CerteCF/consultatimbre  — misma URL, sin rnccomprador/fechas
+// El formato es IGUAL en todos los ambientes — solo cambia el prefijo de la URL:
+//   certecf  → ecf.dgii.gov.do/CerteCF/consultatimbre
+//   testecf  → ecf.dgii.gov.do/testecf/consultatimbre
+//   ecf      → ecf.dgii.gov.do/ecf/consultatimbre
 //
-//  ecf (producción):
-//    ECF:  ecf.dgii.gov.do/ecf/ConsultaTimbre      — params PascalCase, fechas ddMMyyyy
-//    RFCE: fc.dgii.gov.do/eCF/ConsultaTimbreFC     — params PascalCase, sin fechas
+// Params: siempre minúsculas
+// Fechas:  siempre dd-MM-yyyy (con guiones)
+// CodigoSeguridad: primeros 6 chars del SignatureValue (base64), NO SHA-256
 
 interface QRParams {
   tipoECF:        string;
   rncEmisor:      string;
   rncComprador?:  string;
   eNCF:           string;
-  fechaEmision:   string;   // ya formateado por formatFechaQR()
+  fechaEmision:   string;   // ya formateado por formatFechaQR() → "dd-MM-yyyy"
   montoTotal:     number;
-  fechaFirma:     string;   // ya formateado por formatFechaHoraQR()
+  fechaFirma:     string;   // ya formateado por formatFechaHoraQR() → "dd-MM-yyyy HH:mm:ss"
   signatureValue: string;
   esRFCE?:        boolean;  // true si es E32 < RD$250,000
 }
 
 function getAmb(): string {
   return (process.env.DGII_AMBIENTE ?? "certecf").toLowerCase();
-}
-
-function esProduccion(): boolean {
-  return getAmb() === "ecf";
-}
-
-// Primeros 6 caracteres del SignatureValue (base64 del RSA) — NO es SHA-256
-// Confirmado por ejemplos certecf DGII: el valor contiene chars base64 (ej: "FFgkKR")
-// El RFCE ya usaba este mismo método desde antes (signatureValue.substring(0,6))
-export function calcularCodigoSeguridad(signatureValue: string): string {
-  return signatureValue.substring(0, 6);
 }
 
 // Construye query string con encodeURIComponent (%20 para espacios — RFC 3986)
@@ -44,74 +33,60 @@ function buildQS(pairs: [string, string][]): string {
     .join("&");
 }
 
-export function generarURLQR(params: QRParams): string {
-  const codigo = calcularCodigoSeguridad(params.signatureValue);
-  const prod   = esProduccion();
-
-  if (params.esRFCE) {
-    if (prod) {
-      // Producción RFCE → fc.dgii.gov.do — PascalCase, sin fechas
-      const qs = buildQS([
-        ["RncEmisor",       params.rncEmisor],
-        ["ENCF",            params.eNCF],
-        ["MontoTotal",      params.montoTotal.toFixed(2)],
-        ["CodigoSeguridad", codigo],
-      ]);
-      return `https://fc.dgii.gov.do/eCF/ConsultaTimbreFC?${qs}`;
-    } else {
-      // CerteCF RFCE → misma URL certecf, minúsculas, sin fechas ni rnccomprador
-      const qs = buildQS([
-        ["rncemisor",       params.rncEmisor],
-        ["encf",            params.eNCF],
-        ["montototal",      params.montoTotal.toFixed(2)],
-        ["codigoseguridad", codigo],
-      ]);
-      return `https://ecf.dgii.gov.do/CerteCF/consultatimbre?${qs}`;
-    }
-  }
-
-  if (prod) {
-    // Producción ECF → PascalCase, fechas ddMMyyyy, RncComprador 2.º
-    const qs = buildQS([
-      ["RncEmisor",       params.rncEmisor],
-      ...(params.rncComprador ? [["RncComprador", params.rncComprador] as [string, string]] : []),
-      ["ENCF",            params.eNCF],
-      ["FechaEmision",    params.fechaEmision],
-      ["MontoTotal",      params.montoTotal.toFixed(2)],
-      ["FechaFirma",      params.fechaFirma],
-      ["CodigoSeguridad", codigo],
-    ]);
-    return `https://ecf.dgii.gov.do/ecf/ConsultaTimbre?${qs}`;
-  } else {
-    // CerteCF ECF → todo minúsculas, fechas dd-MM-yyyy, rnccomprador 2.º
-    const qs = buildQS([
-      ["rncemisor",       params.rncEmisor],
-      ...(params.rncComprador ? [["rnccomprador", params.rncComprador] as [string, string]] : []),
-      ["encf",            params.eNCF],
-      ["fechaemision",    params.fechaEmision],
-      ["montototal",      params.montoTotal.toFixed(2)],
-      ["fechafirma",      params.fechaFirma],
-      ["codigoseguridad", codigo],
-    ]);
-    return `https://ecf.dgii.gov.do/CerteCF/consultatimbre?${qs}`;
-  }
+// CodigoSeguridad = primeros 6 chars del SignatureValue base64
+// Confirmado con ejemplos DGII certecf (ej: "FFgkKR") — no es SHA-256
+export function calcularCodigoSeguridad(signatureValue: string): string {
+  return signatureValue.substring(0, 6);
 }
 
-// ── Formatos de fecha para la URL del QR ────────────────────────────────────
-// Certificación (certecf/testecf): dd-MM-yyyy  (con guiones)
-// Producción    (ecf):             ddMMyyyy     (sin guiones)
+export function generarURLQR(params: QRParams): string {
+  const codigo = calcularCodigoSeguridad(params.signatureValue);
+  const amb    = getAmb();
+
+  if (params.esRFCE) {
+    // E32 < RD$250,000 — URL fc.dgii.gov.do — sin rnccomprador ni fechas
+    // El ambiente cambia el prefijo (certecf vs ecf)
+    const base = amb === "ecf"
+      ? "https://fc.dgii.gov.do/eCF/ConsultaTimbreFC"
+      : `https://fc.dgii.gov.do/${amb}/ConsultaTimbreFC`;
+    return `${base}?${buildQS([
+      ["rncemisor",       params.rncEmisor],
+      ["encf",            params.eNCF],
+      ["montototal",      params.montoTotal.toFixed(2)],
+      ["codigoseguridad", codigo],
+    ])}`;
+  }
+
+  // ECF completo (E31, E32 ≥ 250k, E33, E34, E41-E47)
+  // Mismo formato en todos los ambientes — solo cambia el prefijo de la URL
+  const base = `https://ecf.dgii.gov.do/${amb === "ecf" ? "ecf" : amb}/consultatimbre`;
+  return `${base}?${buildQS([
+    ["rncemisor",       params.rncEmisor],
+    ...(params.rncComprador ? [["rnccomprador", params.rncComprador] as [string, string]] : []),
+    ["encf",            params.eNCF],
+    ["fechaemision",    params.fechaEmision],
+    ["montototal",      params.montoTotal.toFixed(2)],
+    ["fechafirma",      params.fechaFirma],
+    ["codigoseguridad", codigo],
+  ])}`;
+}
+
+// ── Formato de fechas para la URL del QR ────────────────────────────────────
+// Siempre dd-MM-yyyy (con guiones) — igual en certecf y producción
 
 export function formatFechaQR(dateStr: string): string {
-  // Input: "2026-05-27"
+  // Input: "2026-05-27" (YYYY-MM-DD desde Firestore)
+  // Output: "27-05-2026" (dd-MM-yyyy)
   if (!dateStr) return "";
   const parts = dateStr.split("-");
   if (parts.length !== 3) return dateStr;
   const [y, m, d] = parts;
-  return esProduccion() ? `${d}${m}${y}` : `${d}-${m}-${y}`;
+  return `${d}-${m}-${y}`;
 }
 
 export function formatFechaHoraQR(isoString: string): string {
-  // Input: ISO → Output según entorno: "dd-MM-yyyy HH:mm:ss" o "ddMMyyyy HH:mm:ss"
+  // Input: ISO string
+  // Output: "27-05-2026 01:06:39" (dd-MM-yyyy HH:mm:ss)
   const dt  = new Date(isoString);
   const pad = (n: number) => String(n).padStart(2, "0");
   const dd  = pad(dt.getDate());
@@ -120,6 +95,5 @@ export function formatFechaHoraQR(isoString: string): string {
   const hh  = pad(dt.getHours());
   const min = pad(dt.getMinutes());
   const ss  = pad(dt.getSeconds());
-  const fecha = esProduccion() ? `${dd}${mm}${yy}` : `${dd}-${mm}-${yy}`;
-  return `${fecha} ${hh}:${min}:${ss}`;
+  return `${dd}-${mm}-${yy} ${hh}:${min}:${ss}`;
 }
