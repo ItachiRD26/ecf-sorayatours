@@ -35,8 +35,8 @@ function buildQS(params: Record<string, string>): string {
 export function generarURLQR(params: QRParams): string {
   const codigo = calcularCodigoSeguridad(params.signatureValue);
 
-  if (params.esRFCE || params.tipoECF === "E32") {
-    // RFCE < RD$250,000 — parámetros según spec DGII (case exacto del informe técnico)
+  if (params.esRFCE) {
+    // E32 < RD$250,000 (RFCE) — URL fc.dgii.gov.do sin FechaFirma ni RncComprador
     const base = "https://fc.dgii.gov.do/eCF/ConsultaTimbreFC";
     return `${base}?${buildQS({
       RncEmisor:       params.rncEmisor,
@@ -46,7 +46,7 @@ export function generarURLQR(params: QRParams): string {
     })}`;
   }
 
-  // E31, E33, E34, E41-E47 — con RNC comprador y FechaFirma
+  // E31, E32 ≥ 250k, E33, E34, E41-E47 — URL ecf.dgii.gov.do con FechaFirma
   const base = "https://ecf.dgii.gov.do/ecf/ConsultaTimbre";
   const qsParams: Record<string, string> = {
     RncEmisor:       params.rncEmisor,

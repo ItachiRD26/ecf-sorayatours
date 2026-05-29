@@ -83,6 +83,10 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
     const cSnap = await adminDb.collection("clientes").doc(factura.clienteId).get();
     if (cSnap.exists) rncComprador = fmtRNC((cSnap.data() as { rnc?: string }).rnc ?? "");
   }
+  // Fallback: E32 ≥ 250k walk-in con cédula/RNC ocasional
+  if (!rncComprador && factura.rncCompradorOcasional) {
+    rncComprador = factura.rncCompradorOcasional.replace(/\D/g, "");
+  }
 
   // Recalcular codigoSeguridad (SHA-256 de SignatureValue)
   const codigoSeguridad = calcularCodigoSeguridad(signatureValue);

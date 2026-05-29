@@ -119,7 +119,12 @@ export async function POST(req: NextRequest) {
     const urlQR = generarURLQR({
       tipoECF:       factura.tipoECF,
       rncEmisor:     fmtRNC(empresa.rnc),
-      rncComprador:  cliente?.rnc ? fmtRNC(cliente.rnc) : undefined,
+      // rncComprador: cliente registrado > rncCompradorOcasional (E32 ≥ 250k) > undefined
+      rncComprador:  cliente?.rnc
+        ? fmtRNC(cliente.rnc)
+        : factura.rncCompradorOcasional
+          ? factura.rncCompradorOcasional.replace(/\D/g, "")
+          : undefined,
       eNCF:          factura.eCF,
       fechaEmision,
       montoTotal:    totales.total,

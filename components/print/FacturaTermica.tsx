@@ -161,8 +161,8 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
           }
         </div>
         {factura.codigoSeguridad && (
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", marginBottom: 2 }}>
-            Cod. Seguridad: {factura.codigoSeguridad}
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", marginBottom: 2 }}>
+            Codigo de Seguridad: {factura.codigoSeguridad}
           </div>
         )}
         {factura.fechaEnvioDGII && (
@@ -172,11 +172,15 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
               const pad = (n: number) => String(n).padStart(2, "0");
               const fecha = `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
               const hora  = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-              return `Fecha Firma: ${fecha} ${hora}`;
+              return `Fecha Firma Digital: ${fecha} ${hora}`;
             })()}
           </div>
         )}
-        <div style={{ fontSize: 9, color: "#666" }}>Verifique en ecf.dgii.gov.do</div>
+        <div style={{ fontSize: 9, color: "#666" }}>
+          {factura.urlQR?.includes("fc.dgii.gov.do")
+            ? "Verifique en fc.dgii.gov.do"
+            : "Verifique en ecf.dgii.gov.do"}
+        </div>
       </div>
 
       <div style={{ fontSize: 11, marginBottom: 4 }}>{line}</div>

@@ -86,8 +86,13 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
   const anulada        = factura.estado === "anulada";
   const yaEnviada      = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
   const puedeConsultar = !!factura.trackIdDGII;
-  // URL vieja si FechaFirma tiene guiones (dd-MM-yyyy) en vez de ddMMyyyy
-  const urlVieja = !!factura.urlQR && /[?&]FechaFirma=\d{2}-\d{2}-\d{4}/.test(factura.urlQR);
+  // URL vieja si: FechaFirma con guiones (dd-MM-yyyy) O E32 ≥250k apuntando a fc.dgii.gov.do
+  const urlVieja = !!factura.urlQR && (
+    /[?&]FechaFirma=\d{2}-\d{2}-\d{4}/.test(factura.urlQR)
+    || (factura.tipoECF === "E32"
+        && calcTotales(factura.items).total >= 250_000
+        && factura.urlQR.includes("fc.dgii.gov.do"))
+  );
 
   const item = (label: string, color: string, onClick: () => void, disabled = false) => (
     <button key={label} type="button" onClick={() => { if (!disabled) { onClick(); setOpen(false); } }} disabled={disabled}
