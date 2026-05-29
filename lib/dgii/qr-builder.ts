@@ -47,17 +47,20 @@ export function generarURLQR(params: QRParams): string {
   }
 
   // E31, E32 ≥ 250k, E33, E34, E41-E47 — URL ecf.dgii.gov.do con FechaFirma
+  // Orden exacto según Informe Técnico DGII pág. 35:
+  // RncEmisor → RncComprador → ENCF → FechaEmision → MontoTotal → FechaFirma → CodigoSeguridad
   const base = "https://ecf.dgii.gov.do/ecf/ConsultaTimbre";
-  const qsParams: Record<string, string> = {
-    RncEmisor:       params.rncEmisor,
-    ENCF:            params.eNCF,
-    FechaEmision:    params.fechaEmision,
-    MontoTotal:      params.montoTotal.toFixed(2),
-    FechaFirma:      params.fechaFirma,
-    CodigoSeguridad: codigo,
-  };
-  if (params.rncComprador) qsParams.RncComprador = params.rncComprador;
-  return `${base}?${buildQS(qsParams)}`;
+  const ordered: [string, string][] = [
+    ["RncEmisor",       params.rncEmisor],
+    ...(params.rncComprador ? [["RncComprador", params.rncComprador] as [string, string]] : []),
+    ["ENCF",            params.eNCF],
+    ["FechaEmision",    params.fechaEmision],
+    ["MontoTotal",      params.montoTotal.toFixed(2)],
+    ["FechaFirma",      params.fechaFirma],
+    ["CodigoSeguridad", codigo],
+  ];
+  const qs = ordered.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+  return `${base}?${qs}`;
 }
 
 // ── Formatos de fecha para la URL del QR (Informe Técnico DGII pág. 35-36) ──
