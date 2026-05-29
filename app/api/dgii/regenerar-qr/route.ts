@@ -78,10 +78,16 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
   })();
 
   // Cargar cliente para RncComprador
+  // Validar que clienteId sea un ID simple sin "/" (algunos cert tienen "N/A" u otros placeholders)
   let rncComprador: string | undefined;
-  if (factura.clienteId && factura.clienteId !== "walk-in") {
-    const cSnap = await adminDb.collection("clientes").doc(factura.clienteId).get();
-    if (cSnap.exists) rncComprador = fmtRNC((cSnap.data() as { rnc?: string }).rnc ?? "");
+  const clienteIdValido = factura.clienteId &&
+    factura.clienteId !== "walk-in" &&
+    !factura.clienteId.includes("/");
+  if (clienteIdValido) {
+    try {
+      const cSnap = await adminDb.collection("clientes").doc(factura.clienteId).get();
+      if (cSnap.exists) rncComprador = fmtRNC((cSnap.data() as { rnc?: string }).rnc ?? "");
+    } catch { /* clienteId inválido — continuar sin rncComprador */ }
   }
   // Fallback: E32 ≥ 250k walk-in con cédula/RNC ocasional
   if (!rncComprador && factura.rncCompradorOcasional) {
