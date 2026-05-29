@@ -138,8 +138,9 @@ export async function POST(req: NextRequest) {
       estadoDGII,
       trackIdDGII:    trackId,
       xmlFirmado,
+      signatureValue,           // guardado para regenerar QR sin parsear XML
       urlQR,
-      codigoSeguridad,          // SHA-256 correcto, coincide con el QR
+      codigoSeguridad,
       fechaEnvioDGII: new Date().toISOString(),
     });
 

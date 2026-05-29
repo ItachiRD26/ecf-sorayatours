@@ -200,6 +200,7 @@ export interface Factura {
   trackIdDGII?:          string;
   urlQR?:                string;
   xmlFirmado?:           string;
+  signatureValue?:       string;   // primeros+últimos chars del SignatureValue — para regenerar QR sin parsear XML
   codigoSeguridad?:      string;
   fechaEnvioDGII?:       string;
   fechaConsultaDGII?:    string;

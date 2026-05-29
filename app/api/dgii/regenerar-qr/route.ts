@@ -48,10 +48,14 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
   if (!snap.exists) return { ok: false, error: "Factura no encontrada" };
 
   const factura = { id: facturaId, ...snap.data() } as Factura;
-  if (!factura.xmlFirmado) return { ok: false, error: "Sin xmlFirmado almacenado" };
 
-  const signatureValue = extraerSignature(factura.xmlFirmado);
-  if (!signatureValue) return { ok: false, error: "SignatureValue no encontrado en XML" };
+  // Usar signatureValue guardado en DB (más rápido); fallback al XML si no existe
+  let signatureValue = factura.signatureValue ?? "";
+  if (!signatureValue) {
+    if (!factura.xmlFirmado) return { ok: false, error: "Sin signatureValue ni xmlFirmado" };
+    signatureValue = extraerSignature(factura.xmlFirmado);
+    if (!signatureValue) return { ok: false, error: "SignatureValue no encontrado en XML" };
+  }
 
   // Leer empresa
   const empresaSnap = await adminDb.collection("config").doc("empresa").get();
@@ -65,7 +69,7 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
 
   // FechaFirma: del XML → fallback a fechaEnvioDGII
   // formatFechaHoraQR aplica el formato correcto según DGII_AMBIENTE (certecf/ecf)
-  const fechaISO = extraerFechaFirmaISO(factura.xmlFirmado) || factura.fechaEnvioDGII || "";
+  const fechaISO = (factura.xmlFirmado ? extraerFechaFirmaISO(factura.xmlFirmado) : "") || factura.fechaEnvioDGII || "";
   const fechaFirmaFinal = fechaISO ? formatFechaHoraQR(fechaISO) : "";
 
   // Cargar cliente para RncComprador
