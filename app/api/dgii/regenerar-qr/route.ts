@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   try {
-    const body = await req.json() as { facturaId?: string; todos?: boolean };
+    const body = await req.json() as { facturaId?: string; todos?: boolean; force?: boolean };
 
     if (body.facturaId) {
       const result = await regenerarUna(body.facturaId);
@@ -128,15 +128,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, facturaId: body.facturaId, urlQR: result.urlQR });
     }
 
-    if (body.todos) {
+    if (body.todos || body.force) {
       const snap = await adminDb.collection("facturas")
         .where("estadoDGII", "in", ["Enviado", "Aceptado", "AceptadoCondicional"])
         .get();
 
-      const candidatos = snap.docs.filter(d => {
-        const url = (d.data() as Factura).urlQR ?? "";
-        return url && !tieneFormatoNuevo(url);
-      });
+      // force=true → regenerar todas sin filtrar por formato
+      // todos=true → solo las que tienen URL con formato/orden incorrecto
+      const candidatos = body.force
+        ? snap.docs.filter(d => !!(d.data() as Factura).xmlFirmado)
+        : snap.docs.filter(d => {
+            const url = (d.data() as Factura).urlQR ?? "";
+            if (!url) return true;
+            if (!tieneFormatoNuevo(url)) return true;
+            // También regenerar si RncComprador está después de ENCF (orden incorrecto)
+            const rncIdx  = url.indexOf("RncComprador=");
+            const encfIdx = url.indexOf("ENCF=");
+            if (rncIdx !== -1 && encfIdx !== -1 && rncIdx > encfIdx) return true;
+            return false;
+          });
 
       const resultados: Array<{ id: string; ok: boolean; error?: string }> = [];
       for (const d of candidatos) {
