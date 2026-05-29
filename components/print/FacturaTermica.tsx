@@ -78,13 +78,13 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
               {item.fechaTour  && <div style={{ fontSize: 10, color: "#555" }}>  Fecha: {fmtDate(item.fechaTour)}</div>}
               {item.modo === "por_grupo" ? (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>  {item.cant} pers. (grupo)</span>
+                  <span>  {item.pax || item.cant} pers. (grupo)</span>
                   <span style={{ fontWeight: 600 }}>{fmt(item.precio)}</span>
                 </div>
               ) : (
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span>  {item.cant} × {fmt(item.precio)}/p.</span>
-                  <span style={{ fontWeight: 600 }}>{fmt(item.precio * item.cant)}</span>
+                  <span>  {item.pax || item.cant} × {fmt(item.precio)}/p.</span>
+                  <span style={{ fontWeight: 600 }}>{fmt(c.bruto)}</span>
                 </div>
               )}
               {c.descAmt > 0 && (

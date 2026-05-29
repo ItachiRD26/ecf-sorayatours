@@ -5,7 +5,7 @@ import type { Factura, LineaServicio, Cliente, Servicio, ModoLinea } from "@/typ
 import {
   fmt, today, localDate, calcLinea, calcTotales,
   genECF, TIPOS_ECF, TERMINOS_PAGO, PLAZOS_CREDITO,
-  resolverECFConfig, labelModo, getTierPrice,
+  resolverECFConfig, labelModo, getTierPrice, computeTourPrice,
 } from "@/types";
 import { nextSecuencia }      from "@/hooks/usesecuencias";
 import Modal                  from "@/components/modals/modal";
@@ -90,9 +90,31 @@ function LineaItem({
   const locked   = !!item.fromCatalog;
   const servicio = servicios.find((s) => s.id === item.servicioId);
 
+  // ¿El servicio usa pricing por tiers? (nuevos tours)
+  const hasTiers = !isPurchase && locked && !!servicio?.tiers?.length;
+
+  // Recalcula precio cuando cambian adultos/ninos en servicios con tiers
+  const recalcularTiers = (adultos: number, ninos5a7: number, ninos0a4: number) => {
+    if (!servicio?.tiers?.length) return;
+    const efectivoPax = adultos + ninos5a7 * 0.5;
+    const totalDOP    = computeTourPrice(servicio.tiers, efectivoPax);
+    const paxTotal    = adultos + ninos5a7 + ninos0a4;
+    const precioPP    = paxTotal > 0 ? Math.round(totalDOP / paxTotal) : 0;
+    const partes: string[] = [];
+    if (adultos  > 0) partes.push(adultos  + " adulto" + (adultos  > 1 ? "s" : ""));
+    if (ninos5a7 > 0) partes.push(ninos5a7 + " niño"   + (ninos5a7 > 1 ? "s" : "") + " (5-7, 50%)");
+    if (ninos0a4 > 0) partes.push(ninos0a4 + " niño"   + (ninos0a4 > 1 ? "s" : "") + " (0-4, gratis)");
+    onChange("adultos",  adultos);
+    onChange("ninos5a7", ninos5a7);
+    onChange("ninos0a4", ninos0a4);
+    onChange("pax",      paxTotal);
+    onChange("precio",   precioPP);
+    onChange("tramoLabel" as keyof LineaServicio, partes.join(" + ") as LineaServicio[keyof LineaServicio]);
+  };
+
   const handlePaxChange = (val: string) => {
     const pax = val === "" ? 0 : parseInt(val) || 0;
-    if (!isPurchase && locked && servicio) {
+    if (!isPurchase && locked && servicio && !hasTiers) {
       const tier = getTierPrice(servicio, pax, item.modo === "por_persona" ? "por_persona" : "por_grupo");
       onChange("pax",        pax);
       onChange("precio",     tier.precio);
@@ -107,7 +129,7 @@ function LineaItem({
     ...inputStyle, background: "#f3f4f6", color: "#374151", cursor: "not-allowed",
   };
 
-  // En modo compra, "PAX" se convierte en "Cant." y es simplemente la cantidad
+  // En modo compra, "PAX" se convierte en "Cant."
   const paxLabel        = isPurchase ? "Cant." : "PAX";
   const paxBorderColor  = isPurchase ? "#d1d5db" : "#a5f3fc";
   const paxBg           = isPurchase ? "#fff"    : "#ecfeff";
@@ -116,10 +138,8 @@ function LineaItem({
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 6, padding: "12px 14px", background: locked ? "#fafffe" : "#fafafa", borderLeft: locked ? "3px solid #0e7490" : "3px solid #e5e7eb" }}>
 
-      {/* Fila principal */}
-      <div style={{ display: "grid", gridTemplateColumns: isPurchase ? "100px 1fr 80px 90px auto" : "100px 1fr 70px 80px 90px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
-
-        {/* Codigo */}
+      {/* Fila de código + descripción */}
+      <div style={{ display: "grid", gridTemplateColumns: "100px 1fr auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
         <div>
           <label style={{ ...labelStyle, fontSize: 10 }}>Codigo</label>
           <div style={{ display: "flex", gap: 3 }}>
@@ -135,86 +155,118 @@ function LineaItem({
             )}
           </div>
         </div>
-
-        {/* Descripcion */}
         <div>
           <label style={{ ...labelStyle, fontSize: 10 }}>Descripcion</label>
           <input style={{ ...(locked ? lockedStyle : inputStyle), fontSize: 12 }}
             value={item.descripcion} readOnly={locked} placeholder="Descripcion del servicio"
             onChange={locked ? () => {} : (e) => onChange("descripcion", e.target.value)} />
         </div>
-
-        {/* Cant — solo cuando NO es compra */}
-        {!isPurchase && (
-          <div>
-            <label style={{ ...labelStyle, fontSize: 10 }}>Cant.</label>
-            <div style={{ ...inputStyle, fontSize: 12, background: "#f3f4f6", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
-              1
-            </div>
-          </div>
-        )}
-
-        {/* PAX (tours) / Cant. (compras) */}
-        <div>
-          <label style={{ ...labelStyle, fontSize: 10, color: isPurchase ? "#374151" : "#0e7490" }}>{paxLabel}</label>
-          <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: paxBorderColor, background: paxBg, color: paxColor }}
-            value={item.pax === 0 ? "" : item.pax}
-            placeholder="0"
-            onChange={(e) => handlePaxChange(e.target.value)} />
-        </div>
-
-        {/* Descuento RD$ */}
-        <div>
-          <label style={{ ...labelStyle, fontSize: 10 }}>Desc. RD$</label>
-          <div style={{ position: "relative" }}>
-            <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#9ca3af", fontFamily: mono }}>$</span>
-            <input type="number" min="0" step="1"
-              style={{ ...inputStyle, fontSize: 12, paddingLeft: 20, fontFamily: mono }}
-              value={item.descuentoMonto === 0 ? "" : item.descuentoMonto} placeholder="0"
-              onChange={(e) => {
-                const val = e.target.value;
-                onChange("descuentoMonto", val === "" ? 0 : parseFloat(val) || 0);
-              }} />
-          </div>
-        </div>
-
-        {/* Eliminar */}
         <button type="button" onClick={onDelete} disabled={total === 1}
           style={{ background: "none", border: "1px solid #fecaca", borderRadius: 4, padding: "6px 8px", cursor: total === 1 ? "not-allowed" : "pointer", color: "#dc2626", display: "flex", alignItems: "center", opacity: total === 1 ? 0.4 : 1 }}>
           <Icon name="trash" size={13} />
         </button>
       </div>
 
-      {/* Info de linea */}
+      {/* Fila de personas / PAX */}
+      {hasTiers ? (
+        /* Tour con tiers dinámicos: inputs de adultos y niños */
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 110px", gap: 8, marginBottom: 8 }}>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: "#0e7490" }}>Adultos (8+)</label>
+            <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: "#a5f3fc", background: "#ecfeff", color: "#0e7490" }}
+              value={(item.adultos ?? 0) === 0 ? "" : item.adultos}
+              placeholder="0"
+              onChange={(e) => {
+                const v = parseInt(e.target.value) || 0;
+                recalcularTiers(v, item.ninos5a7 ?? 0, item.ninos0a4 ?? 0);
+              }} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: "#7c3aed" }}>Niños 5-7 (50%)</label>
+            <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: "#ddd6fe", background: "#f5f3ff", color: "#7c3aed" }}
+              value={(item.ninos5a7 ?? 0) === 0 ? "" : item.ninos5a7}
+              placeholder="0"
+              onChange={(e) => {
+                const v = parseInt(e.target.value) || 0;
+                recalcularTiers(item.adultos ?? 0, v, item.ninos0a4 ?? 0);
+              }} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: "#166534" }}>Niños 0-4 (gratis)</label>
+            <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: "#bbf7d0", background: "#f0faf4", color: "#166534" }}
+              value={(item.ninos0a4 ?? 0) === 0 ? "" : item.ninos0a4}
+              placeholder="0"
+              onChange={(e) => {
+                const v = parseInt(e.target.value) || 0;
+                recalcularTiers(item.adultos ?? 0, item.ninos5a7 ?? 0, v);
+              }} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10 }}>Desc. RD$</label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#9ca3af", fontFamily: mono }}>$</span>
+              <input type="number" min="0" step="1"
+                style={{ ...inputStyle, fontSize: 12, paddingLeft: 20, fontFamily: mono }}
+                value={item.descuentoMonto === 0 ? "" : item.descuentoMonto} placeholder="0"
+                onChange={(e) => onChange("descuentoMonto", parseFloat(e.target.value) || 0)} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Servicio sin tiers (legacy) o compra */
+        <div style={{ display: "grid", gridTemplateColumns: isPurchase ? "80px 90px auto" : "70px 80px 90px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
+          {!isPurchase && (
+            <div>
+              <label style={{ ...labelStyle, fontSize: 10 }}>Cant.</label>
+              <div style={{ ...inputStyle, fontSize: 12, background: "#f3f4f6", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>1</div>
+            </div>
+          )}
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: isPurchase ? "#374151" : "#0e7490" }}>{paxLabel}</label>
+            <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: paxBorderColor, background: paxBg, color: paxColor }}
+              value={item.pax === 0 ? "" : item.pax} placeholder="0"
+              onChange={(e) => handlePaxChange(e.target.value)} />
+          </div>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10 }}>Desc. RD$</label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#9ca3af", fontFamily: mono }}>$</span>
+              <input type="number" min="0" step="1"
+                style={{ ...inputStyle, fontSize: 12, paddingLeft: 20, fontFamily: mono }}
+                value={item.descuentoMonto === 0 ? "" : item.descuentoMonto} placeholder="0"
+                onChange={(e) => onChange("descuentoMonto", parseFloat(e.target.value) || 0)} />
+            </div>
+          </div>
+          <div />
+        </div>
+      )}
+
+      {/* Info de línea */}
       {item.descripcion && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid #f3f4f6" }}>
 
-          {/* Modo badge — solo en ventas (no compras) */}
-          {!isPurchase && (
+          {hasTiers && item.pax > 0 && item.precio > 0 && (
+            <span style={{ fontSize: 11, color: "#374151", fontFamily: sans, fontWeight: 600 }}>
+              {item.pax} pax × RD$ {fmt(item.precio)}/p.
+            </span>
+          )}
+
+          {!isPurchase && !hasTiers && (
             <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, fontFamily: sans, fontWeight: 600, background: item.modo === "por_grupo" ? "#ecfeff" : "#f0faf4", color: item.modo === "por_grupo" ? "#0e7490" : "#166534", border: "1px solid " + (item.modo === "por_grupo" ? "#a5f3fc" : "#bbf7d0") }}>
               {item.modo === "por_grupo" ? "Grupo" : "Por Persona"}
             </span>
           )}
 
-          {/* Tramo — solo ventas */}
-          {!isPurchase && locked && item.tramoLabel && (
+          {!hasTiers && locked && item.tramoLabel && (
             <span style={{ fontSize: 11, color: "#6b7280", fontFamily: sans }}>
               Tramo: <strong style={{ color: "#374151" }}>{item.tramoLabel}</strong>
             </span>
           )}
 
-          {/* Precio base */}
-          {locked && item.precio > 0 && (
-            <span style={{ fontSize: 11, color: "#6b7280", fontFamily: sans }}>
-              {isPurchase
-                ? (item.pax + " u × RD$ " + fmt(item.precio) + "/u.")
-                : item.modo === "por_grupo"
-                  ? ("Tarifa grupo: RD$ " + fmt(item.precio))
-                  : (item.pax + " PAX x RD$ " + fmt(item.precio) + "/p.")}
-            </span>
+          {hasTiers && item.tramoLabel && (
+            <span style={{ fontSize: 10, color: "#6b7280", fontFamily: sans }}>{item.tramoLabel}</span>
           )}
 
-          {/* ITBIS badge */}
           <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 3, fontFamily: sans, background: item.itbis === 0 ? "#f0faf4" : "#eff6ff", color: item.itbis === 0 ? "#166534" : "#1d4ed8", border: "1px solid " + (item.itbis === 0 ? "#bbf7d0" : "#bfdbfe") }}>
             {item.itbis === 0 ? "Exento" : ("ITBIS " + item.itbis * 100 + "%")}
           </span>
@@ -225,7 +277,6 @@ function LineaItem({
             </span>
           )}
 
-          {/* Total */}
           <span style={{ marginLeft: "auto", fontFamily: mono, fontSize: 14, fontWeight: 700, color: "#111" }}>
             RD$ {fmt(c.total)}
           </span>
@@ -701,25 +752,31 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
       {showServicios !== null && (
         <ModalServicios servicios={servicios}
           onSelect={(s, modo) => {
-            const pax  = items[showServicios]?.pax || 0;
-            // Para tipos exentos forzar itbis=0
             const itbisOverride = TIPOS_SOLO_EXENTO.has(form.tipoECF) ? 0 : s.itbis;
-            // En modo compra, siempre por_persona con pax=1 inicial
-            const modoFinal = isPurchase ? "por_persona" : modo;
-            const tier = isPurchase
-              ? { precio: s.precioPorPersona ?? 0, modoResultante: "por_persona" as ModoLinea, tramoLabel: "", autoCambiado: false }
-              : getTierPrice(s, pax, modoFinal);
+            const hasTiersS     = !isPurchase && !!s.tiers?.length;
+
             setItems((prev) => {
               const existIdx = prev.findIndex((it) => it.servicioId === s.id);
               if (existIdx >= 0) {
                 alertaDuplicado({ titulo: "Item ya agregado", mensaje: ("\"" + s.nombre + "\" ya esta en la linea " + (existIdx + 1) + ".") });
                 return prev;
               }
-              const updated = prev.map((item, idx) =>
-                idx === showServicios
-                  ? { ...item, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: itbisOverride, cant: 1, pax: isPurchase ? 1 : pax }
-                  : item
-              );
+
+              let nuevaLinea: LineaServicio;
+              if (isPurchase) {
+                // Compra: por persona simple
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: s.precioPorPersona ?? 0, tramoLabel: "", itbis: itbisOverride, cant: 1, pax: 1 };
+              } else if (hasTiersS) {
+                // Tour con tiers: inicializar vacío, el usuario ingresará adultos/niños
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: 0, tramoLabel: "", itbis: itbisOverride, cant: 1, pax: 0, adultos: 0, ninos5a7: 0, ninos0a4: 0 };
+              } else {
+                // Tour legacy con tramos fijos
+                const pax  = prev[showServicios!]?.pax || 0;
+                const tier = getTierPrice(s, pax, modo === "por_persona" ? "por_persona" : "por_grupo");
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: itbisOverride, cant: 1, pax };
+              }
+
+              const updated = prev.map((item, idx) => idx === showServicios ? nuevaLinea : item);
               if (showServicios === prev.length - 1) updated.push({ ...ITEM_VACIO });
               return updated;
             });

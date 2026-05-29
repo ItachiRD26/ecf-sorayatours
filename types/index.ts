@@ -28,20 +28,52 @@ export interface Cliente {
 // ── Servicio de Excursión ─────────────────────────────────────────
 export type ModalidadServicio = "por_persona" | "por_grupo" | "ambas";
 
+// Tramo de precio dinámico (reemplaza los 3 campos fijos precioTramo*)
+// - Tramo plano:    { upTo, total }              → aplica precio total fijo para ≤upTo pax
+// - Zona lineal:    { upTo, total, incr }         → total = total + (pax - prevUpTo) × incr
+// - Por persona:    { upTo, total, perPax: true } → total = total × effectivePax
+export interface PriceTier {
+  upTo:    number;   // pax efectivo máximo inclusive de este tramo
+  total:   number;   // DOP: total plano, base lineal, o tarifa/persona (si perPax=true)
+  incr?:   number;   // DOP por persona adicional sobre el tramo anterior (zona lineal)
+  perPax?: boolean;  // total real = total × effectivePax
+}
+
 export interface Servicio {
   id:                string;
   codigo:            string;
   nombre:            string;
   descripcion?:      string;
   modalidad:         ModalidadServicio;
-  // Precios por tramos de grupo (tarifa plana por grupo)
-  precioTramo1_2?:   number;   // 1–2 personas: precio total plano
-  precioTramo3_5?:   number;   // 3–5 personas: precio total plano
-  precioTramo6_8?:   number;   // 6–8 personas: precio total plano
-  precioPorPersona?: number;   // 9+ personas O modo por_persona: precio × persona
+  // ── Precio flexible por tramos (nuevo) ──
+  tiers?:            PriceTier[];  // si existe, reemplaza los campos precioTramo*
+  // ── Precio por tramos fijos (legacy) ──
+  precioTramo1_2?:   number;
+  precioTramo3_5?:   number;
+  precioTramo6_8?:   number;
+  precioPorPersona?: number;
   itbis:             number;
   activo:            boolean;
   creadoEn?:         string;
+}
+
+// Calcula el precio total DOP para un grupo con pax efectivos (adultos + niños×0.5)
+export function computeTourPrice(tiers: PriceTier[], effectivePax: number): number {
+  if (!tiers?.length || effectivePax <= 0) return 0;
+  const sorted = [...tiers].sort((a, b) => a.upTo - b.upTo);
+  let prevUpTo = 0;
+  for (const tier of sorted) {
+    if (effectivePax <= tier.upTo) {
+      if (tier.perPax)            return Math.round(tier.total * effectivePax);
+      if (tier.incr !== undefined) return Math.round(tier.total + (effectivePax - prevUpTo) * tier.incr);
+      return tier.total;
+    }
+    prevUpTo = tier.upTo;
+  }
+  const last = sorted[sorted.length - 1];
+  if (last.perPax)            return Math.round(last.total * effectivePax);
+  if (last.incr !== undefined) return Math.round(last.total + (effectivePax - last.upTo) * last.incr);
+  return last.total;
 }
 
 // ── Helper: obtener precio y tramo según cantidad ─────────────────
@@ -137,16 +169,20 @@ export const PLAZOS_CREDITO = ["15 Días", "30 Días", "45 Días", "60 Días", "
 export type ModoLinea = "por_persona" | "por_grupo";
 
 export interface LineaServicio {
-  servicioId?:    string;     // ref al catálogo (si viene de catálogo)
-  fromCatalog?:   boolean;    // true → codigo, descripcion, precio son de solo lectura
-  tramoLabel?:    string;     // "1–2 personas", "3–5 personas", etc.
+  servicioId?:    string;     // ref al catálogo
+  fromCatalog?:   boolean;    // true → codigo, descripcion son de solo lectura
+  tramoLabel?:    string;     // descripción del tramo / desglose personas
   codigo:         string;
   descripcion:    string;
   modo:           ModoLinea;
   cant:           number;     // siempre 1 — cantidad de excursiones
-  pax:            number;     // número de personas (determina tramo y cálculo)
-  precio:         number;     // precio plano del tramo (grupo) o precio × pax (persona)
-  descuentoMonto: number;     // RD$ de descuento fijo sobre el total
+  pax:            number;     // total de personas en la factura (incl. todos los rangos)
+  // Desglose de personas (cuando el servicio usa tiers)
+  adultos?:       number;     // adultos y niños ≥8 años (precio completo)
+  ninos5a7?:      number;     // niños 5-7 años (50% del precio)
+  ninos0a4?:      number;     // niños 0-4 años (gratis — solo display)
+  precio:         number;     // RD$ por persona (total/pax) para XML y display
+  descuentoMonto: number;     // RD$ de descuento sobre el bruto
   itbis:          number;
   fechaTour?:     string;
 }
