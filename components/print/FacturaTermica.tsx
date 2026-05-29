@@ -147,12 +147,12 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
         )}
       </div>
 
-      {/* QR */}
+      {/* QR — tamaño mínimo 22×22mm según informe técnico DGII */}
       <div style={{ textAlign: "center", marginBottom: 8 }}>
-        <div style={{ display: "inline-block", margin: "0 auto 4px" }}>
+        <div style={{ display: "inline-block", margin: "0 auto 6px" }}>
           {factura.urlQR
-            ? <QRCodeSVG value={factura.urlQR} size={80} level="M" />
-            : <div style={{ display: "inline-flex", width: 72, height: 72, border: "2px dashed #aaa", alignItems: "center", justifyContent: "center" }}>
+            ? <QRCodeSVG value={factura.urlQR} size={88} level="M" />
+            : <div style={{ display: "inline-flex", width: 80, height: 80, border: "2px dashed #aaa", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 26 }}>▦</div>
                   <div style={{ fontSize: 8, color: "#666" }}>QR DGII</div>
@@ -162,7 +162,18 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
         </div>
         {factura.codigoSeguridad && (
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", marginBottom: 2 }}>
-            {factura.codigoSeguridad}
+            Cod. Seguridad: {factura.codigoSeguridad}
+          </div>
+        )}
+        {factura.fechaEnvioDGII && (
+          <div style={{ fontSize: 10, marginBottom: 2 }}>
+            {(() => {
+              const d   = new Date(factura.fechaEnvioDGII!);
+              const pad = (n: number) => String(n).padStart(2, "0");
+              const fecha = `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()}`;
+              const hora  = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+              return `Fecha Firma: ${fecha} ${hora}`;
+            })()}
           </div>
         )}
         <div style={{ fontSize: 9, color: "#666" }}>Verifique en ecf.dgii.gov.do</div>

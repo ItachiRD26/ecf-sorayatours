@@ -13,6 +13,7 @@ const NAV = [
   { href: "/cuentas-por-cobrar", label: "Cuentas por Cobrar", icon: "alert"     },
   { href: "/clientes",           label: "Clientes",           icon: "clients"   },
   { href: "/servicios",          label: "Servicios",          icon: "products"  },
+  { href: "/recibidas",          label: "Recibidas DGII",     icon: "invoice"   },
   { href: "/reportes",           label: "Reportes",           icon: "chart"     },
   { href: "/configuracion",      label: "Configuración",      icon: "settings"  },
   { href: "/certificacion",      label: "Certificación DGII",  icon: "invoice"   },

@@ -47,11 +47,14 @@ const REFERENCIA_CONFIG: Record<string, { label: string; placeholder: string } |
   Cheque:        { label: "No. de Cheque",      placeholder: "Ej: 00123456" },
 };
 
-// cant = 1 siempre, pax = personas
+// cant = 1 siempre, pax = personas (o cantidad en modo compra)
 const ITEM_VACIO: LineaServicio = {
   codigo: "", descripcion: "", modo: "por_grupo",
   cant: 1, pax: 0, precio: 0, descuentoMonto: 0, itbis: 0,
 };
+
+// Tipos donde los items son solo exentos (itbis=0 forzado)
+const TIPOS_SOLO_EXENTO = new Set(["E43", "E47"]);
 
 function clean<T extends object>(obj: T): Partial<T> {
   const out: Partial<T> = {};
@@ -72,7 +75,7 @@ interface Props {
 
 // ── Componente de linea de servicio ───────────────────────────────
 function LineaItem({
-  item, idx, total, servicios, onChange, onDelete, onSelectServicio,
+  item, idx, total, servicios, onChange, onDelete, onSelectServicio, isPurchase,
 }: {
   item:             LineaServicio;
   idx:              number;
@@ -81,15 +84,15 @@ function LineaItem({
   onChange:         <K extends keyof LineaServicio>(k: K, v: LineaServicio[K]) => void;
   onDelete:         () => void;
   onSelectServicio: () => void;
+  isPurchase:       boolean;
 }) {
   const c        = calcLinea(item);
   const locked   = !!item.fromCatalog;
   const servicio = servicios.find((s) => s.id === item.servicioId);
 
-  // Cuando cambia PAX en item de catalogo: auto-tier
   const handlePaxChange = (val: string) => {
     const pax = val === "" ? 0 : parseInt(val) || 0;
-    if (locked && servicio) {
+    if (!isPurchase && locked && servicio) {
       const tier = getTierPrice(servicio, pax, item.modo === "por_persona" ? "por_persona" : "por_grupo");
       onChange("pax",        pax);
       onChange("precio",     tier.precio);
@@ -104,11 +107,17 @@ function LineaItem({
     ...inputStyle, background: "#f3f4f6", color: "#374151", cursor: "not-allowed",
   };
 
+  // En modo compra, "PAX" se convierte en "Cant." y es simplemente la cantidad
+  const paxLabel        = isPurchase ? "Cant." : "PAX";
+  const paxBorderColor  = isPurchase ? "#d1d5db" : "#a5f3fc";
+  const paxBg           = isPurchase ? "#fff"    : "#ecfeff";
+  const paxColor        = isPurchase ? "#111"    : "#0e7490";
+
   return (
     <div style={{ border: "1px solid #e5e7eb", borderRadius: 6, padding: "12px 14px", background: locked ? "#fafffe" : "#fafafa", borderLeft: locked ? "3px solid #0e7490" : "3px solid #e5e7eb" }}>
 
       {/* Fila principal */}
-      <div style={{ display: "grid", gridTemplateColumns: "100px 1fr 70px 80px 90px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isPurchase ? "100px 1fr 80px 90px auto" : "100px 1fr 70px 80px 90px auto", gap: 8, alignItems: "end", marginBottom: 8 }}>
 
         {/* Codigo */}
         <div>
@@ -135,18 +144,20 @@ function LineaItem({
             onChange={locked ? () => {} : (e) => onChange("descripcion", e.target.value)} />
         </div>
 
-        {/* Cant — siempre 1 */}
-        <div>
-          <label style={{ ...labelStyle, fontSize: 10 }}>Cant.</label>
-          <div style={{ ...inputStyle, fontSize: 12, background: "#f3f4f6", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
-            1
+        {/* Cant — solo cuando NO es compra */}
+        {!isPurchase && (
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10 }}>Cant.</label>
+            <div style={{ ...inputStyle, fontSize: 12, background: "#f3f4f6", color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+              1
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* PAX — numero de personas */}
+        {/* PAX (tours) / Cant. (compras) */}
         <div>
-          <label style={{ ...labelStyle, fontSize: 10, color: "#0e7490" }}>PAX</label>
-          <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: "#a5f3fc", background: "#ecfeff" }}
+          <label style={{ ...labelStyle, fontSize: 10, color: isPurchase ? "#374151" : "#0e7490" }}>{paxLabel}</label>
+          <input type="number" min="0" style={{ ...inputStyle, fontSize: 13, fontWeight: 700, textAlign: "center", borderColor: paxBorderColor, background: paxBg, color: paxColor }}
             value={item.pax === 0 ? "" : item.pax}
             placeholder="0"
             onChange={(e) => handlePaxChange(e.target.value)} />
@@ -177,13 +188,16 @@ function LineaItem({
       {/* Info de linea */}
       {item.descripcion && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid #f3f4f6" }}>
-          {/* Modo badge */}
-          <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, fontFamily: sans, fontWeight: 600, background: item.modo === "por_grupo" ? "#ecfeff" : "#f0faf4", color: item.modo === "por_grupo" ? "#0e7490" : "#166534", border: "1px solid " + (item.modo === "por_grupo" ? "#a5f3fc" : "#bbf7d0") }}>
-            {item.modo === "por_grupo" ? "Grupo" : "Por Persona"}
-          </span>
 
-          {/* Tramo */}
-          {locked && item.tramoLabel && (
+          {/* Modo badge — solo en ventas (no compras) */}
+          {!isPurchase && (
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, fontFamily: sans, fontWeight: 600, background: item.modo === "por_grupo" ? "#ecfeff" : "#f0faf4", color: item.modo === "por_grupo" ? "#0e7490" : "#166534", border: "1px solid " + (item.modo === "por_grupo" ? "#a5f3fc" : "#bbf7d0") }}>
+              {item.modo === "por_grupo" ? "Grupo" : "Por Persona"}
+            </span>
+          )}
+
+          {/* Tramo — solo ventas */}
+          {!isPurchase && locked && item.tramoLabel && (
             <span style={{ fontSize: 11, color: "#6b7280", fontFamily: sans }}>
               Tramo: <strong style={{ color: "#374151" }}>{item.tramoLabel}</strong>
             </span>
@@ -192,9 +206,11 @@ function LineaItem({
           {/* Precio base */}
           {locked && item.precio > 0 && (
             <span style={{ fontSize: 11, color: "#6b7280", fontFamily: sans }}>
-              {item.modo === "por_grupo"
-                ? ("Tarifa grupo: RD$ " + fmt(item.precio))
-                : (item.pax + " PAX x RD$ " + fmt(item.precio) + "/p.")}
+              {isPurchase
+                ? (item.pax + " u × RD$ " + fmt(item.precio) + "/u.")
+                : item.modo === "por_grupo"
+                  ? ("Tarifa grupo: RD$ " + fmt(item.precio))
+                  : (item.pax + " PAX x RD$ " + fmt(item.precio) + "/p.")}
             </span>
           )}
 
@@ -205,7 +221,7 @@ function LineaItem({
 
           {item.descuentoMonto > 0 && (
             <span style={{ fontSize: 11, color: "#dc2626", fontFamily: sans }}>
-              {"\u2212 RD$ " + fmt(item.descuentoMonto)}
+              {"− RD$ " + fmt(item.descuentoMonto)}
             </span>
           )}
 
@@ -216,8 +232,8 @@ function LineaItem({
         </div>
       )}
 
-      {/* Fecha del tour */}
-      {item.descripcion && (
+      {/* Fecha del tour — solo ventas */}
+      {!isPurchase && item.descripcion && (
         <div style={{ marginTop: 8 }}>
           <input type="date" title="Fecha de la excursion (opcional)"
             style={{ ...inputStyle, fontSize: 11, padding: "5px 10px", maxWidth: 180 }}
@@ -226,10 +242,10 @@ function LineaItem({
         </div>
       )}
 
-      {/* Aviso 9+ auto-cambio */}
-      {locked && item.modo === "por_persona" && item.pax >= 9 && (
+      {/* Aviso 9+ auto-cambio — solo ventas */}
+      {!isPurchase && locked && item.modo === "por_persona" && item.pax >= 9 && (
         <div style={{ marginTop: 6, fontSize: 11, color: "#0e7490", fontFamily: sans, background: "#ecfeff", padding: "5px 10px", borderRadius: 4, border: "1px solid #a5f3fc" }}>
-          {"\u2139\uFE0F " + item.pax + " PAX — cobro por persona (9+ aplica tarifa individual)"}
+          {"ℹ️ " + item.pax + " PAX — cobro por persona (9+ aplica tarifa individual)"}
         </div>
       )}
     </div>
@@ -238,20 +254,23 @@ function LineaItem({
 
 // ── Modal principal ───────────────────────────────────────────────
 export default function ModalNuevaFactura({ clientes, servicios, facturas, onSave, onClose, saving }: Props) {
+  const [esCompra,           setEsCompra]           = useState(false);
   const [esWalkIn,           setEsWalkIn]           = useState(false);
   const [nombreWalkIn,       setNombreWalkIn]       = useState("");
   const [telefonoWalkIn,     setTelefonoWalkIn]     = useState("");
+  const [idExtranjero,       setIdExtranjero]       = useState("");  // para E47
   const [items,              setItems]              = useState<LineaServicio[]>([{ ...ITEM_VACIO }]);
   const [form, setForm] = useState({
     tipoECF:        "E31" as import("@/types").TipoECF,
     clienteId:      "",
     fecha:          today(),
-    vencimientoECF: "2028-12-31",  // E31 default — DGII certecf autoriza hasta 2028-12-31
+    vencimientoECF: "2028-12-31",
     terminos:       "Contado" as typeof TERMINOS_PAGO[number],
     metodoPago:     "Efectivo" as MetodoPago,
     cotizacionRef:  "",
   });
-  const [plazoCredito, setPlazoCredito] = useState<typeof PLAZOS_CREDITO[number]>("30 Días");  const [referencia,         setReferencia]         = useState("");
+  const [plazoCredito, setPlazoCredito] = useState<typeof PLAZOS_CREDITO[number]>("30 Días");
+  const [referencia,         setReferencia]         = useState("");
   const [notas,              setNotas]              = useState("");
   const [tieneAbonoInicial,  setTieneAbonoInicial]  = useState(false);
   const [montoAbonoInicial,  setMontoAbonoInicial]  = useState(0);
@@ -265,48 +284,66 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
   const { mostrar: alertaDuplicado, AlertaUI }          = useAlerta();
 
   const clienteSeleccionado = clientes.find((c) => c.id === form.clienteId);
-  const ecfConfig           = resolverECFConfig(esWalkIn ? undefined : clienteSeleccionado, esWalkIn);
+  const ecfConfig           = resolverECFConfig(esWalkIn ? undefined : clienteSeleccionado, esWalkIn, esCompra);
   const esContado           = form.terminos === "Contado";
   const diasPlazo           = parseInt(plazoCredito) || 30;
   const refConfig           = esContado ? REFERENCIA_CONFIG[form.metodoPago] : null;
   const requiereReferencia  = esContado && !!refConfig;
 
+  // Tipos de compras — no usan PAX ni modo tour
+  const isPurchase = ["E41", "E43", "E47"].includes(form.tipoECF);
+
+  // Ajustar tipo cuando cambia modo compra/venta o cliente
   useEffect(() => {
-    const cfg = resolverECFConfig(esWalkIn ? undefined : clientes.find((c) => c.id === form.clienteId), esWalkIn);
+    const cfg = resolverECFConfig(esWalkIn ? undefined : clientes.find((c) => c.id === form.clienteId), esWalkIn, esCompra);
     if (!cfg.tiposDisponibles.includes(form.tipoECF))
       setForm((p) => ({ ...p, tipoECF: cfg.tipoDefault }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.clienteId, esWalkIn]);
+  }, [form.clienteId, esWalkIn, esCompra]);
 
   const t          = calcTotales(items);
   const eCFPreview = genECF(form.tipoECF, facturas.filter((f) => f.tipoECF === form.tipoECF).length + 1);
   const setF       = <K extends keyof typeof form>(k: K, v: typeof form[K]) => setForm((p) => ({ ...p, [k]: v }));
 
-  // E32 >= 250k sin RNC registrado → exigir cédula/RNC en el momento
+  // E32 >= 250k sin RNC registrado → exigir cédula/RNC
   const necesitaIdentificacion =
     form.tipoECF === "E32" &&
     t.total >= 250_000 &&
     !clienteSeleccionado?.rnc?.trim();
 
-  // FechaVencimientoSecuencia por tipo — debe coincidir con lo autorizado por DGII certecf
-  // E32 tiene vencimiento 2099-12-31 (secuencias de consumo largo plazo)
-  // Todos los demás: 2028-12-31 (según Paso 2 aprobado)
   const vencimientoPorTipo = (tipo: string): string =>
     tipo === "E32" ? "2099-12-31" : "2028-12-31";
+
   const updateItem = (i: number) => <K extends keyof LineaServicio>(k: K, v: LineaServicio[K]) =>
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
 
+  // Cuando cambia al modo compra → reset estado del formulario
+  const handleToggleCompra = (v: boolean) => {
+    setEsCompra(v);
+    setEsWalkIn(false);
+    setNombreWalkIn("");
+    setTelefonoWalkIn("");
+    setIdExtranjero("");
+    setForm((p) => ({ ...p, clienteId: "", tipoECF: v ? "E43" : "E31", vencimientoECF: "2028-12-31" }));
+    setItems([{ ...ITEM_VACIO }]);
+    setRncOcasional("");
+    setEsExtranjeroOcasional(false);
+  };
+
   const handleValidar = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!esWalkIn && !form.clienteId)       return alert("Selecciona un cliente");
-    if (esWalkIn && !nombreWalkIn.trim())   return alert("El nombre del cliente es obligatorio");
-    if (items.every((i) => !i.descripcion)) return alert("Agrega al menos un servicio");
+    if (!esWalkIn && !form.clienteId && form.tipoECF !== "E43") return alert(esCompra ? "Selecciona un proveedor" : "Selecciona un cliente");
+    if (esWalkIn && !nombreWalkIn.trim())   return alert("El nombre es obligatorio");
+    if (items.every((i) => !i.descripcion)) return alert("Agrega al menos un item");
     if (requiereReferencia && !referencia.trim()) return alert("Ingresa el " + refConfig?.label);
     if (necesitaIdentificacion && !rncOcasional.trim())
       return alert("E32 ≥ RD$250,000 requiere cédula o RNC del comprador");
     const digits = rncOcasional.replace(/\D/g, "");
     if (necesitaIdentificacion && !esExtranjeroOcasional && digits.length !== 9 && digits.length !== 11)
       return alert("La cédula debe tener 11 dígitos y el RNC empresarial 9 dígitos");
+    // E47 requiere ID extranjero
+    if (form.tipoECF === "E47" && !idExtranjero.trim())
+      return alert("E47 requiere el ID o pasaporte del beneficiario exterior");
     setShowConfirmacion(true);
   };
 
@@ -316,20 +353,26 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
       : undefined;
     const seq = await nextSecuencia(form.tipoECF);
     const eCF = genECF(form.tipoECF, seq);
+
+    // idTransaccion: E47 → ID extranjero del beneficiario; demás → ref de pago
+    const idTransaccionValue = form.tipoECF === "E47" && idExtranjero
+      ? idExtranjero
+      : (esContado && referencia) ? referencia : undefined;
+
     await onSave(clean({
       noFactura: String(seq), eCF, tipoECF: form.tipoECF,
       fecha: form.fecha, vencimientoECF: form.vencimientoECF,
       terminos: esContado ? "Contado" : plazoCredito,
-      clienteId: esWalkIn ? "walk-in" : form.clienteId,
+      clienteId: esWalkIn ? "walk-in" : (form.clienteId || "walk-in"),
       cotizacionRef: form.cotizacionRef || undefined,
       estado: esContado ? "pagada" : "pendiente",
       metodoPago: esContado ? form.metodoPago : undefined,
-      idTransaccion: (esContado && referencia) ? referencia : undefined,
+      idTransaccion: idTransaccionValue,
       modalidadPago: esContado ? "unico" : "plazo",
       fechaVencimientoPago: fechaVencPago,
       esConsumidorFinal: esWalkIn,
-      nombreConsumidor:  esWalkIn ? (nombreWalkIn || "Consumidor Final") : undefined,
-      telefonoConsumidor: esWalkIn ? (telefonoWalkIn || undefined) : undefined,
+      nombreConsumidor:  esWalkIn ? (nombreWalkIn || (esCompra ? "BENEFICIARIO EXTERIOR" : "Consumidor Final")) : undefined,
+      telefonoConsumidor: (!esCompra && esWalkIn) ? (telefonoWalkIn || undefined) : undefined,
       rncCompradorOcasional: (necesitaIdentificacion && rncOcasional.trim()) ? rncOcasional.trim() : undefined,
       esExtranjeroComprador: (necesitaIdentificacion && esExtranjeroOcasional) ? true : undefined,
       items: items.filter((i) => i.descripcion),
@@ -340,6 +383,17 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     }) as Omit<Factura, "id">);
   };
 
+  // Label según modo
+  const labelEntidad = esCompra
+    ? (esWalkIn ? (form.tipoECF === "E47" ? "Beneficiario Exterior" : "Sin Proveedor (E43)") : "Proveedor")
+    : "Cliente";
+  const labelSinRNC  = esCompra
+    ? (form.tipoECF === "E47" ? "Pago al exterior — E47" : "Gasto sin proveedor — E43")
+    : "Sin RNC -- emite E32";
+  const labelWalkIn  = esCompra
+    ? (form.tipoECF === "E47" ? "Beneficiario exterior / E47" : "Sin proveedor (E43)")
+    : "Consumidor Final / Turista";
+
   return (
     <Modal title="Nueva Factura" onClose={onClose} width={1200}>
       <form onSubmit={handleValidar}>
@@ -347,6 +401,22 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
 
           {/* ── COLUMNA IZQUIERDA ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+            {/* Toggle Venta / Compra */}
+            <div style={{ display: "flex", gap: 0, borderRadius: 4, overflow: "hidden", border: "1px solid #d1d5db" }}>
+              {[
+                { v: false, label: "Venta / Servicio", icon: "📤" },
+                { v: true,  label: "Compra / Gasto",   icon: "📥" },
+              ].map(({ v, label, icon }) => (
+                <button key={String(v)} type="button"
+                  onClick={() => handleToggleCompra(v)}
+                  style={{ flex: 1, padding: "8px 6px", border: "none", cursor: "pointer", fontSize: 11, fontFamily: sans, fontWeight: 600,
+                    background: esCompra === v ? (v ? "#7c3aed" : "#0e7490") : "#fff",
+                    color: esCompra === v ? "#fff" : "#6b7280" }}>
+                  {icon} {label}
+                </button>
+              ))}
+            </div>
 
             {/* eCF Preview */}
             <div style={{ background: "#111", borderRadius: 4, padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -369,9 +439,9 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                       const activo = form.tipoECF === codigo;
                       return (
                         <button key={codigo} type="button" onClick={() => setForm((p) => ({ ...p, tipoECF: codigo, vencimientoECF: vencimientoPorTipo(codigo) }))}
-                          style={{ flex: 1, padding: "7px 8px", textAlign: "center", border: "2px solid " + (activo ? "#0e7490" : "#e5e7eb"), borderRadius: 4, cursor: "pointer", background: activo ? "#0e7490" : "#fff", color: activo ? "#fff" : "#374151" }}>
+                          style={{ flex: 1, padding: "7px 8px", textAlign: "center", border: "2px solid " + (activo ? (esCompra ? "#7c3aed" : "#0e7490") : "#e5e7eb"), borderRadius: 4, cursor: "pointer", background: activo ? (esCompra ? "#7c3aed" : "#0e7490") : "#fff", color: activo ? "#fff" : "#374151" }}>
                           <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{codigo}</div>
-                          <div style={{ fontSize: 9, color: activo ? "rgba(255,255,255,0.6)" : "#9ca3af", fontFamily: sans }}>{meta?.label.split("---")[1]?.trim()}</div>
+                          <div style={{ fontSize: 9, color: activo ? "rgba(255,255,255,0.6)" : "#9ca3af", fontFamily: sans }}>{meta?.label.split("---")[1]?.trim() ?? meta?.label}</div>
                         </button>
                       );
                     })}
@@ -385,39 +455,59 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
               </div>
             </div>
 
-            {/* Cliente */}
+            {/* Cliente / Proveedor */}
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: sans }}>Cliente</div>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "8px 12px", background: esWalkIn ? "#fffbeb" : "#f9fafb", border: "1px solid " + (esWalkIn ? "#fde68a" : "#e5e7eb"), borderRadius: 4, marginBottom: 8, userSelect: "none" }}>
-                <div onClick={() => { setEsWalkIn((v) => !v); if (!esWalkIn) setForm((p) => ({ ...p, clienteId: "" })); }}
-                  style={{ width: 16, height: 16, border: "2px solid " + (esWalkIn ? "#92400e" : "#d1d5db"), borderRadius: 3, background: esWalkIn ? "#92400e" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
-                  {esWalkIn && <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>}
-                </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, fontFamily: sans, color: esWalkIn ? "#92400e" : "#374151" }}>Consumidor Final / Turista</div>
-                  <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: sans }}>Sin RNC -- emite E32</div>
-                </div>
-              </label>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: sans }}>{labelEntidad}</div>
+
+              {/* Walk-in / Sin proveedor toggle — no aplica cuando tipo está locked con proveedor */}
+              {!(esCompra && ecfConfig.locked) && (
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", padding: "8px 12px", background: esWalkIn ? "#fffbeb" : "#f9fafb", border: "1px solid " + (esWalkIn ? "#fde68a" : "#e5e7eb"), borderRadius: 4, marginBottom: 8, userSelect: "none" }}>
+                  <div onClick={() => { setEsWalkIn((v) => !v); if (!esWalkIn) setForm((p) => ({ ...p, clienteId: "" })); }}
+                    style={{ width: 16, height: 16, border: "2px solid " + (esWalkIn ? "#92400e" : "#d1d5db"), borderRadius: 3, background: esWalkIn ? "#92400e" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+                    {esWalkIn && <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, fontFamily: sans, color: esWalkIn ? "#92400e" : "#374151" }}>{labelWalkIn}</div>
+                    <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: sans }}>{labelSinRNC}</div>
+                  </div>
+                </label>
+              )}
+
               {esWalkIn ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <input style={{ ...inputStyle, fontSize: 12 }} placeholder="Nombre del turista / grupo *"
-                    value={nombreWalkIn} required onChange={(e) => setNombreWalkIn(e.target.value)} />
-                  <input style={{ ...inputStyle, fontSize: 12, fontFamily: mono }} placeholder="Telefono (opcional)"
-                    value={telefonoWalkIn} type="tel" maxLength={12}
-                    onChange={(e) => {
-                      const d = e.target.value.replace(/\D/g, "").slice(0, 10);
-                      let f = d;
-                      if (d.length > 6) f = d.slice(0,3) + "-" + d.slice(3,6) + "-" + d.slice(6);
-                      else if (d.length > 3) f = d.slice(0,3) + "-" + d.slice(3);
-                      setTelefonoWalkIn(f);
-                    }} />
+                  <input style={{ ...inputStyle, fontSize: 12 }}
+                    placeholder={esCompra ? (form.tipoECF === "E47" ? "Nombre del beneficiario / empresa exterior *" : "Descripción del gasto (opcional)") : "Nombre del turista / grupo *"}
+                    value={nombreWalkIn}
+                    onChange={(e) => setNombreWalkIn(e.target.value)} />
+                  {/* Teléfono — solo en ventas walk-in */}
+                  {!esCompra && (
+                    <input style={{ ...inputStyle, fontSize: 12, fontFamily: mono }} placeholder="Telefono (opcional)"
+                      value={telefonoWalkIn} type="tel" maxLength={12}
+                      onChange={(e) => {
+                        const d = e.target.value.replace(/\D/g, "").slice(0, 10);
+                        let f = d;
+                        if (d.length > 6) f = d.slice(0,3) + "-" + d.slice(3,6) + "-" + d.slice(6);
+                        else if (d.length > 3) f = d.slice(0,3) + "-" + d.slice(3);
+                        setTelefonoWalkIn(f);
+                      }} />
+                  )}
+                  {/* ID Extranjero — E47 */}
+                  {form.tipoECF === "E47" && (
+                    <div>
+                      <label style={{ ...labelStyle, fontSize: 10 }}>ID / Pasaporte Extranjero <span style={{ color: "#dc2626" }}>*</span></label>
+                      <input style={{ ...inputStyle, fontSize: 12, fontFamily: mono, borderColor: "#f59e0b" }}
+                        placeholder="Ej: 350555123"
+                        value={idExtranjero}
+                        onChange={(e) => setIdExtranjero(e.target.value)} />
+                    </div>
+                  )}
                 </div>
               ) : (
                 <>
                   <button type="button" onClick={() => setShowClienteModal(true)}
                     style={{ width: "100%", textAlign: "left", ...inputStyle, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
                     <span style={{ color: clienteSeleccionado ? "#111" : "#9ca3af" }}>
-                      {clienteSeleccionado ? clienteSeleccionado.nombre : "--- Buscar cliente ---"}
+                      {clienteSeleccionado ? clienteSeleccionado.nombre : (esCompra ? "--- Buscar proveedor ---" : "--- Buscar cliente ---")}
                     </span>
                     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><circle cx={11} cy={11} r={8}/><path d="m21 21-4.35-4.35"/></svg>
                   </button>
@@ -431,8 +521,8 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
               )}
             </div>
 
-            {/* Identificacion comprador E32 >= 250k */}
-            {necesitaIdentificacion && (
+            {/* Identificacion comprador E32 >= 250k — solo ventas */}
+            {!esCompra && necesitaIdentificacion && (
               <div style={{ background: "#fffbeb", border: "1px solid #f59e0b", borderRadius: 6, padding: "12px 14px" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8, fontFamily: sans }}>
                   ⚠ Identificación requerida — E32 ≥ RD$250,000
@@ -458,11 +548,6 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                     setRncOcasional(v);
                   }}
                 />
-                <div style={{ fontSize: 10, color: "#92400e", marginTop: 4, fontFamily: sans }}>
-                  {esExtranjeroOcasional
-                    ? "Pasaporte, documento diplomático u otro identificador."
-                    : "Cédula dominicana de 11 dígitos o RNC empresarial de 9 dígitos."}
-                </div>
               </div>
             )}
 
@@ -490,7 +575,8 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                   {METODOS_PAGO.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
               )}
-              {esContado && refConfig && (
+              {/* Referencia de pago — no para E47 (usa idExtranjero) */}
+              {esContado && refConfig && form.tipoECF !== "E47" && (
                 <div>
                   <label style={{ ...labelStyle, fontSize: 10 }}>{refConfig.label} <span style={{ color: "#dc2626" }}>*</span></label>
                   <input required style={{ ...inputStyle, fontSize: 12, fontFamily: mono }}
@@ -499,8 +585,8 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
               )}
             </div>
 
-            {/* Abono inicial */}
-            {!esContado && (
+            {/* Abono inicial — solo ventas a crédito */}
+            {!esCompra && !esContado && (
               <div style={{ border: "1px solid #e5e7eb", borderRadius: 4, overflow: "hidden" }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", background: tieneAbonoInicial ? "#f0faf4" : "#f9fafb", userSelect: "none" }}>
                   <div onClick={() => { setTieneAbonoInicial((v) => !v); setMontoAbonoInicial(0); setRefAbonoInicial(""); }}
@@ -548,27 +634,35 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
             <div style={{ display: "flex", gap: 8 }}>
               <button type="button" onClick={onClose} style={{ ...btnSecondary, flex: 1, justifyContent: "center" }}>Cancelar</button>
               <button type="submit" disabled={saving}
-                style={{ ...btnPrimary, flex: 1, justifyContent: "center", background: saving ? "#d1d5db" : "#0e7490", cursor: saving ? "not-allowed" : "pointer" }}>
+                style={{ ...btnPrimary, flex: 1, justifyContent: "center", background: saving ? "#d1d5db" : (esCompra ? "#7c3aed" : "#0e7490"), cursor: saving ? "not-allowed" : "pointer" }}>
                 Revisar
               </button>
             </div>
           </div>
 
-          {/* ── COLUMNA DERECHA: SERVICIOS ── */}
+          {/* ── COLUMNA DERECHA: ITEMS ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", textTransform: "uppercase", letterSpacing: "0.06em", fontFamily: sans }}>
-                Servicios / Excursiones
+                {isPurchase ? "Items / Servicios adquiridos" : "Servicios / Excursiones"}
               </div>
-              <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6b7280", fontFamily: sans }}>
-                <span style={{ background: "#ecfeff", color: "#0e7490", border: "1px solid #a5f3fc", padding: "2px 8px", borderRadius: 3, fontWeight: 600 }}>PAX = personas</span>
-                <span>Cant. = 1 excursion siempre</span>
-              </div>
+              {!isPurchase && (
+                <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#6b7280", fontFamily: sans }}>
+                  <span style={{ background: "#ecfeff", color: "#0e7490", border: "1px solid #a5f3fc", padding: "2px 8px", borderRadius: 3, fontWeight: 600 }}>PAX = personas</span>
+                  <span>Cant. = 1 excursion siempre</span>
+                </div>
+              )}
+              {isPurchase && (
+                <div style={{ fontSize: 11, color: "#7c3aed", fontFamily: sans, background: "#f5f3ff", border: "1px solid #ddd6fe", padding: "2px 10px", borderRadius: 3, fontWeight: 600 }}>
+                  {form.tipoECF === "E43" ? "E43 — todo exento de ITBIS" : form.tipoECF === "E47" ? "E47 — retención ISR 27%" : "E41 — retención ITBIS + ISR 10%"}
+                </div>
+              )}
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: "calc(90vh - 200px)", overflowY: "auto", paddingRight: 2 }}>
               {items.map((item, i) => (
                 <LineaItem key={i} item={item} idx={i} total={items.length} servicios={servicios}
+                  isPurchase={isPurchase}
                   onChange={updateItem(i)}
                   onDelete={() => { if (items.length > 1) setItems((p) => p.filter((_, idx) => idx !== i)); }}
                   onSelectServicio={() => setShowServicios(i)} />
@@ -593,7 +687,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                     <span style={{ fontFamily: mono, color: col as string, fontWeight: 500 }}>RD$ {v as string}</span>
                   </div>
                 ))}
-                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: "#0e7490" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 14px", background: esCompra ? "#7c3aed" : "#0e7490" }}>
                   <span style={{ fontFamily: sans, fontWeight: 700, fontSize: 13, color: "#fff" }}>Total Neto RD$</span>
                   <span style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "#fff" }}>{fmt(t.total)}</span>
                 </div>
@@ -608,16 +702,22 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
         <ModalServicios servicios={servicios}
           onSelect={(s, modo) => {
             const pax  = items[showServicios]?.pax || 0;
-            const tier = getTierPrice(s, pax, modo);
+            // Para tipos exentos forzar itbis=0
+            const itbisOverride = TIPOS_SOLO_EXENTO.has(form.tipoECF) ? 0 : s.itbis;
+            // En modo compra, siempre por_persona con pax=1 inicial
+            const modoFinal = isPurchase ? "por_persona" : modo;
+            const tier = isPurchase
+              ? { precio: s.precioPorPersona ?? 0, modoResultante: "por_persona" as ModoLinea, tramoLabel: "", autoCambiado: false }
+              : getTierPrice(s, pax, modoFinal);
             setItems((prev) => {
               const existIdx = prev.findIndex((it) => it.servicioId === s.id);
               if (existIdx >= 0) {
-                alertaDuplicado({ titulo: "Servicio ya agregado", mensaje: ("\"" + s.nombre + "\" ya esta en la linea " + (existIdx + 1) + ".") });
+                alertaDuplicado({ titulo: "Item ya agregado", mensaje: ("\"" + s.nombre + "\" ya esta en la linea " + (existIdx + 1) + ".") });
                 return prev;
               }
               const updated = prev.map((item, idx) =>
                 idx === showServicios
-                  ? { ...item, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: s.itbis, cant: 1, pax }
+                  ? { ...item, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: itbisOverride, cant: 1, pax: isPurchase ? 1 : pax }
                   : item
               );
               if (showServicios === prev.length - 1) updated.push({ ...ITEM_VACIO });
@@ -628,7 +728,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
           onClose={() => setShowServicios(null)} />
       )}
 
-      {/* Busqueda de cliente */}
+      {/* Busqueda de cliente / proveedor */}
       {showClienteModal && (
         <ClienteSearchModal clientes={clientes}
           onSelect={(c) => { setF("clienteId", c.id); setShowClienteModal(false); }}
@@ -639,34 +739,55 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
       {showConfirmacion && (() => {
         const itemsFiltrados = items.filter((i) => i.descripcion);
         const totales        = calcTotales(itemsFiltrados);
-        const nombreCliente  = esWalkIn ? (nombreWalkIn || "Consumidor Final") : (clienteSeleccionado?.nombre ?? "---");
+        const nombreEntidad  = esWalkIn
+          ? (nombreWalkIn || (esCompra ? "Sin proveedor" : "Consumidor Final"))
+          : (clienteSeleccionado?.nombre ?? "---");
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
             <div style={{ background: "#fff", borderRadius: 4, width: "100%", maxWidth: 580, maxHeight: "92vh", overflow: "auto", boxShadow: "0 24px 64px rgba(0,0,0,0.22)" }}>
-              <div style={{ padding: "18px 24px", background: "#0e7490", borderRadius: "4px 4px 0 0" }}>
+              <div style={{ padding: "18px 24px", background: esCompra ? "#7c3aed" : "#0e7490", borderRadius: "4px 4px 0 0" }}>
                 <div style={{ fontFamily: serif, fontSize: 16, fontWeight: 700, color: "#fff" }}>Confirmar emision</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", fontFamily: sans }}>Revisa los datos antes de emitir el comprobante fiscal</div>
               </div>
               <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
                 <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 4, padding: "12px 16px", fontSize: 12, fontFamily: sans, lineHeight: 1.9 }}>
-                  <div><span style={{ color: "#6b7280" }}>Cliente: </span><strong>{nombreCliente}</strong></div>
+                  <div><span style={{ color: "#6b7280" }}>{esCompra ? "Proveedor: " : "Cliente: "}</span><strong>{nombreEntidad}</strong></div>
                   <div><span style={{ color: "#6b7280" }}>Tipo e-CF: </span><strong style={{ fontFamily: mono }}>{form.tipoECF}</strong></div>
                   <div><span style={{ color: "#6b7280" }}>Fecha: </span><strong>{form.fecha}</strong></div>
                   <div><span style={{ color: "#6b7280" }}>Pago: </span><strong style={{ color: esContado ? "#166534" : "#1d4ed8" }}>{esContado ? ("Contado -- " + form.metodoPago) : ("Credito -- " + plazoCredito)}</strong></div>
+                  {form.tipoECF === "E47" && idExtranjero && <div><span style={{ color: "#6b7280" }}>ID Extranjero: </span><strong style={{ fontFamily: mono }}>{idExtranjero}</strong></div>}
                 </div>
 
                 <div style={{ border: "1px solid #e5e7eb", borderRadius: 4, overflow: "hidden" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: sans }}>
                     <thead>
                       <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                        {["Servicio", "Modo", "PAX", "Precio", "Desc.", "Total"].map((h) => (
-                          <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
-                        ))}
+                        {isPurchase
+                          ? ["Descripción", "Cant.", "Precio Unit.", "Desc.", "Total"].map((h) => (
+                              <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                            ))
+                          : ["Servicio", "Modo", "PAX", "Precio", "Desc.", "Total"].map((h) => (
+                              <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                            ))
+                        }
                       </tr>
                     </thead>
                     <tbody>
                       {itemsFiltrados.map((item, i) => {
                         const c = calcLinea(item);
+                        if (isPurchase) {
+                          return (
+                            <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                              <td style={{ padding: "9px 10px", fontSize: 12, color: "#111" }}>{item.descripcion}</td>
+                              <td style={{ padding: "9px 10px", fontFamily: mono, fontSize: 13, fontWeight: 700 }}>{item.pax || 1}</td>
+                              <td style={{ padding: "9px 10px", fontFamily: mono, fontSize: 12 }}>RD$ {fmt(item.precio)}</td>
+                              <td style={{ padding: "9px 10px", fontFamily: mono, fontSize: 12, color: "#dc2626" }}>
+                                {item.descuentoMonto > 0 ? ("-" + fmt(item.descuentoMonto)) : "---"}
+                              </td>
+                              <td style={{ padding: "9px 10px", fontFamily: mono, fontSize: 12, fontWeight: 700 }}>RD$ {fmt(c.total)}</td>
+                            </tr>
+                          );
+                        }
                         return (
                           <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
                             <td style={{ padding: "9px 10px", fontSize: 12, color: "#111" }}>
@@ -697,7 +818,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
                         <span style={{ fontFamily: mono, color: col }}>RD$ {v}</span>
                       </div>
                     ))}
-                    <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", background: "#0e7490" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "10px 12px", background: esCompra ? "#7c3aed" : "#0e7490" }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: sans }}>TOTAL RD$</span>
                       <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "#fff" }}>{fmt(totales.total)}</span>
                     </div>

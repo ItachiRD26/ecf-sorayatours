@@ -283,23 +283,23 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
               </div>
           }
         </div>
-        <div style={{ fontSize: 10, color: "#374151", lineHeight: 1.9 }}>
+        <div style={{ fontSize: 10, color: "#374151", lineHeight: 2 }}>
           {factura.codigoSeguridad && (
-            <div>Codigo de Seguridad: <strong style={{ fontFamily: mono }}>{factura.codigoSeguridad}</strong></div>
+            <div>Codigo de Seguridad: <strong style={{ fontFamily: mono, letterSpacing: "0.1em" }}>{factura.codigoSeguridad}</strong></div>
           )}
           {factura.fechaEnvioDGII && (
-            <div>Fecha Firma: <span style={{ fontFamily: mono }}>{fmtFechaFirma(factura.fechaEnvioDGII)}</span></div>
+            <div>Fecha Firma Digital: <span style={{ fontFamily: mono }}>{fmtFechaFirma(factura.fechaEnvioDGII)}</span></div>
           )}
           {!factura.urlQR && !factura.codigoSeguridad && (
             <div style={{ fontStyle: "italic", color: "#9ca3af" }}>(Disponible tras firma digital)</div>
           )}
+          <div style={{ marginTop: 4, fontSize: 9, color: "#9ca3af" }}>Verifique en ecf.dgii.gov.do</div>
         </div>
       </div>
 
       {/* ── PIE ── */}
-      <div style={{ paddingTop: 10, borderTop: "1px dashed #d1d5db", display: "flex", justifyContent: "space-between", fontSize: 9, color: "#9ca3af" }}>
-        <div>Comprobante Fiscal Electronico (e-CF) emitido conforme a DGII</div>
-        <div>Verifique en ecf.dgii.gov.do</div>
+      <div style={{ paddingTop: 10, borderTop: "1px dashed #d1d5db", fontSize: 9, color: "#9ca3af", textAlign: "center" }}>
+        Comprobante Fiscal Electronico (e-CF) — Soraya &amp; Leonardo Tours SRL
       </div>
     </div>
   );

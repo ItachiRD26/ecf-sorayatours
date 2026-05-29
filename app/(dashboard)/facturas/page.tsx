@@ -335,10 +335,20 @@ export default function FacturasPage() {
         <select style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: 13, fontFamily: sans, outline: "none" }}
           value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
           <option value="">Todos los tipos</option>
-          <option value="E31">E31</option>
-          <option value="E32">E32</option>
-          <option value="E33">E33</option>
-          <option value="E34">E34</option>
+          <optgroup label="Ventas / Servicios">
+            <option value="E31">E31 — Crédito Fiscal</option>
+            <option value="E32">E32 — Consumo</option>
+            <option value="E33">E33 — Nota Débito</option>
+            <option value="E34">E34 — Nota Crédito</option>
+            <option value="E44">E44 — Regímenes Especiales</option>
+            <option value="E45">E45 — Gubernamental</option>
+            <option value="E46">E46 — Exportaciones</option>
+          </optgroup>
+          <optgroup label="Compras / Gastos">
+            <option value="E41">E41 — Compras</option>
+            <option value="E43">E43 — Gastos Menores</option>
+            <option value="E47">E47 — Pagos al Exterior</option>
+          </optgroup>
         </select>
         <select style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: 13, fontFamily: sans, outline: "none" }}
           value={filtroDGII} onChange={(e) => setFiltroDGII(e.target.value)}>

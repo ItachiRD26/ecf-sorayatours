@@ -207,6 +207,33 @@ export interface Factura {
   fechaAnulacion?:       string;
 }
 
+// ── Factura Recibida (receptor DGII) ─────────────────────────────
+export type EstadoARECF  = "pendiente" | "Enviado" | "Error";
+export type EstadoACECF  = "pendiente" | "Aceptado" | "Rechazado" | "NoAplica";
+
+export interface FacturaRecibida {
+  id:                    string;   // = encf (documento único)
+  encf:                  string;
+  tipoECF:               string;
+  rncEmisor:             string;
+  razonSocialEmisor?:    string;
+  rncComprador:          string;
+  fechaEmision:          string;   // YYYY-MM-DD
+  montoTotal:            number;
+  // Acuse de Recibo
+  estadoARECF:           EstadoARECF;
+  fechaARECF?:           string;
+  xmlARECF?:             string;
+  // Aprobación Comercial
+  estadoACECF:           EstadoACECF;
+  motivoRechazoACECF?:   string;
+  fechaACECF?:           string;
+  xmlACECF?:             string;
+  // Metadatos
+  xmlRecibido?:          string;
+  recibidoEn:            string;
+}
+
 // ── Cotización ────────────────────────────────────────────────────
 export type EstadoCotizacion = "vigente" | "vencida" | "convertida" | "anulada";
 
@@ -348,8 +375,28 @@ export interface ECFConfig {
 
 export function resolverECFConfig(
   cliente: Pick<Cliente, "tipo" | "subtipo" | "rnc"> | undefined,
-  esWalkIn: boolean
+  esWalkIn: boolean,
+  esCompra = false,
 ): ECFConfig {
+  // ── Modo Compra / Gasto ──────────────────────────────────────────
+  if (esCompra) {
+    if (esWalkIn || !cliente) {
+      return {
+        tipoDefault:      "E43",
+        tiposDisponibles: ["E43", "E47"],
+        locked:           false,
+        motivo:           "Sin proveedor — E43 gasto menor / E47 pago al exterior",
+      };
+    }
+    return {
+      tipoDefault:      "E41",
+      tiposDisponibles: ["E41"],
+      locked:           true,
+      motivo:           "Compra a proveedor local — E41",
+    };
+  }
+
+  // ── Modo Venta (comportamiento original) ─────────────────────────
   if (esWalkIn || !cliente) {
     return { tipoDefault: "E32", tiposDisponibles: ["E32"], locked: true, motivo: "Consumidor final — E32" };
   }
