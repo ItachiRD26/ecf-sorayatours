@@ -117,10 +117,11 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
               </>
             )}
 
-            {/* No-notas y no-E32: fecha vencimiento y términos */}
-            {!esNota && !esE32 && (
+            {/* Fecha Vencimiento — solo E32 y E34 no llevan (pág. 6 Formato e-CF DGII) */}
+            {factura.tipoECF !== "E32" && factura.tipoECF !== "E34" && (
               <div><strong>Fecha Vencimiento:</strong> {fmtDate(factura.vencimientoECF)}</div>
             )}
+            {/* Términos — solo facturas normales (no notas) */}
             {!esNota && (
               <div><strong>Terminos:</strong> {factura.terminos === "Contado" ? "Contado" : "Credito " + factura.terminos}</div>
             )}
