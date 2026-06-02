@@ -15,7 +15,11 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\" -Recurse -Name)",
       "PowerShell(head -50)",
       "Bash(findstr /v \".next\")",
-      "Bash(findstr /v \"node_modules\")"
+      "Bash(findstr /v \"node_modules\")",
+      "Bash(mkdir -p \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\semilla\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\ValidacionCertificado\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\recepcion\\\\api\\\\ecf\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\aprobacioncomercial\\\\api\\\\ecf\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\User\\Documents\\WORK\\SORAYA Y LEONARDO TOURS\\soraya-tours-ecf\\app\\fe\\autenticacion\\api"
     ]
   }
 }
