@@ -39,12 +39,19 @@ function parseFechaEmision(raw: string): string {
   return raw;
 }
 
+function xmlOk(encf = ""): Response {
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<respuesta>\n  <estado>OK</estado>\n  <encf>${encf}</encf>\n</respuesta>`;
+  return new Response(body, { status: 200, headers: { "Content-Type": "application/xml; charset=utf-8" } });
+}
+
+function xmlError(msg: string, status = 400): Response {
+  const body = `<?xml version="1.0" encoding="UTF-8"?>\n<respuesta>\n  <estado>ERROR</estado>\n  <mensaje>${msg}</mensaje>\n</respuesta>`;
+  return new Response(body, { status, headers: { "Content-Type": "application/xml; charset=utf-8" } });
+}
+
 // GET — health-check
 export async function GET() {
-  return NextResponse.json(
-    { activo: true, rncComprador: RNC_COMPRADOR, servicio: "RecepcionECF" },
-    { status: 200 },
-  );
+  return xmlOk();
 }
 
 // POST — recepción de e-CF desde DGII
@@ -73,7 +80,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!xmlRecibido) {
-      return NextResponse.json({ recibido: false, error: "XML vacío" }, { status: 400 });
+      return xmlError("XML vacío");
     }
 
     const encf         = tag(xmlRecibido, "eNCF") || tag(xmlRecibido, "ENCF");
@@ -88,7 +95,7 @@ export async function POST(req: NextRequest) {
 
     if (!encf) {
       console.warn("[fe/recepcion] eNCF no encontrado en XML");
-      return NextResponse.json({ recibido: true, aviso: "eNCF no encontrado" }, { status: 200 });
+      return xmlOk();
     }
 
     const TIPOS_SIN_ACECF = new Set(["E32", "E41", "E43", "E46", "E47"]);
@@ -111,12 +118,11 @@ export async function POST(req: NextRequest) {
     await adminDb.collection("facturas_recibidas").doc(encf).set(doc, { merge: true });
     console.log(`[fe/recepcion] e-CF recibido: ${encf} de ${rncEmisor} — RD$${montoTotal}`);
 
-    return NextResponse.json({ recibido: true, encf }, { status: 200 });
+    return xmlOk(encf);
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[fe/recepcion]", msg);
-    // Siempre 200 para que DGII no reintente indefinidamente
-    return NextResponse.json({ recibido: true, aviso: msg }, { status: 200 });
+    return xmlOk(); // siempre 200 XML para que DGII no reintente
   }
 }
