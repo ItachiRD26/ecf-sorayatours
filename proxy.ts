@@ -6,9 +6,11 @@ const SESSION_COOKIE = "__session";
 const PUBLIC_PATHS = [
   "/login",
   "/api/auth/session",
-   "/api/dgii/cert/debug-row",        // ← añadir
-  "/api/dgii/cert/consultar-trackid", // ← añadir
+  "/api/dgii/cert/debug-row",
+  "/api/dgii/cert/consultar-trackid",
   "/api/auth/logout",
+  "/fe/",          // endpoints DGII receptor (autenticacion, recepcion, aprobacion)
+  "/api/admin/",   // seed de servicios
   "/_next",
   "/favicon.ico",
 ];
