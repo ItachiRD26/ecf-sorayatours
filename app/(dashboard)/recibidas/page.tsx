@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { db }              from "@/lib/firebase";
-import { collection, onSnapshot, orderBy, query, limit, Timestamp } from "firebase/firestore";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { FacturaRecibida }  from "@/types";
 import { fmt, fmtDate }          from "@/types";
 
@@ -38,8 +36,10 @@ function badgeACECF(estado: string) {
 
 function fmtTs(ts: unknown): string {
   if (!ts) return "—";
-  if (ts instanceof Timestamp) return ts.toDate().toLocaleString("es-DO");
-  if (typeof ts === "string")  return new Date(ts).toLocaleString("es-DO");
+  if (typeof ts === "string") return new Date(ts).toLocaleString("es-DO");
+  if (typeof ts === "object" && ts !== null && "seconds" in ts) {
+    return new Date((ts as { seconds: number }).seconds * 1000).toLocaleString("es-DO");
+  }
   return "—";
 }
 
@@ -185,21 +185,35 @@ function ModalAccion({ factura, accion, onClose, onDone }: ModalAccionProps) {
 export default function RecíbidasPage() {
   const [facturas, setFacturas] = useState<FacturaRecibida[]>([]);
   const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState("");
   const [modal,    setModal]    = useState<{ factura: FacturaRecibida; accion: "arecf" | "acecf" } | null>(null);
   const [toast,    setToast]    = useState("");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cargar = useCallback(async () => {
+    try {
+      const res = await fetch("/api/dgii/recibidas");
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json() as { items: FacturaRecibida[] };
+      setFacturas(data.items ?? []);
+      setError("");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[recibidas]", msg);
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const q = query(
-      collection(db, "facturas_recibidas"),
-      orderBy("recibidoEn", "desc"),
-      limit(200),
-    );
-    const unsub = onSnapshot(q, snap => {
-      setFacturas(snap.docs.map(d => ({ id: d.id, ...d.data() } as FacturaRecibida)));
-      setLoading(false);
-    }, () => setLoading(false));
-    return () => unsub();
-  }, []);
+    cargar();
+    // Polling cada 5 segundos para actualizaciones en tiempo real
+    intervalRef.current = setInterval(cargar, 5000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [cargar]);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -225,14 +239,25 @@ export default function RecíbidasPage() {
       )}
 
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111", marginBottom: 4 }}>
-          Facturas Recibidas
-        </h1>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>
-          e-CFs recibidos de proveedores vía DGII — Pasos 7-11 de certificación
-        </p>
+      <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111", marginBottom: 4 }}>
+            Facturas Recibidas
+          </h1>
+          <p style={{ fontSize: 13, color: "#6b7280" }}>
+            e-CFs recibidos de proveedores vía DGII — Pasos 7-11 de certificación
+          </p>
+        </div>
+        <button onClick={cargar} style={{ padding: "7px 14px", border: "1px solid #d1d5db", borderRadius: 4, background: "#fff", cursor: "pointer", fontSize: 12 }}>
+          ↻ Actualizar
+        </button>
       </div>
+
+      {error && (
+        <div style={{ background: "#fee2e2", color: "#991b1b", padding: "10px 14px", borderRadius: 6, fontSize: 12, marginBottom: 16 }}>
+          Error cargando datos: {error}
+        </div>
+      )}
 
       {/* Tarjetas resumen */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 20 }}>
