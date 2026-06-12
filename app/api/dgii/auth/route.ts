@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     const token = await getToken();
     return NextResponse.json({
       success:  true,
-      ambiente: process.env.DGII_AMBIENTE ?? "testecf",
+      ambiente: process.env.DGII_AMBIENTE ?? "ecf",
       token:    token.substring(0, 20) + "...", // Solo mostrar el inicio por seguridad
     });
   } catch (error: unknown) {

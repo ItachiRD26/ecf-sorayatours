@@ -24,7 +24,7 @@ async function verificarSesion(req: NextRequest): Promise<boolean> {
 
 function acecfUrl(): string {
   if (process.env.DGII_AC_URL) return process.env.DGII_AC_URL;
-  const amb = (process.env.DGII_AMBIENTE ?? "certecf").toLowerCase();
+  const amb = (process.env.DGII_AMBIENTE ?? "ecf").toLowerCase();
   if (amb === "certecf") return `${ECF_HOST}/CerteCF/AprobacionComercial/api/AprobacionComercial`;
   if (amb === "ecf")     return `${ECF_HOST}/ecf/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
   return `${ECF_HOST}/${amb}/emisorreceptor/fe/aprobacioncomercial/api/ecf`;
@@ -69,8 +69,6 @@ async function enviarACECF(
 ): Promise<{ mensaje: string; estado: string; codigo: string }> {
   const url      = acecfUrl();
   const filename = `${RNC_COMPRADOR}${encf}.xml`;
-
-  console.log("[DGII/acecf] URL →", url);
 
   const form = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);

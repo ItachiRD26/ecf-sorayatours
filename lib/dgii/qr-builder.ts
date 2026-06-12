@@ -22,7 +22,7 @@ interface QRParams {
 }
 
 function getAmb(): string {
-  return (process.env.DGII_AMBIENTE ?? "certecf").toLowerCase();
+  return (process.env.DGII_AMBIENTE ?? "ecf").toLowerCase();
 }
 
 // Construye query string con encodeURIComponent (%20 para espacios — RFC 3986)

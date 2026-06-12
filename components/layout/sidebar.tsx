@@ -16,7 +16,6 @@ const NAV = [
   { href: "/recibidas",          label: "Recibidas DGII",     icon: "invoice"   },
   { href: "/reportes",           label: "Reportes",           icon: "chart"     },
   { href: "/configuracion",      label: "Configuración",      icon: "settings"  },
-  { href: "/certificacion",      label: "Certificación DGII",  icon: "invoice"   },
 ];
 
 const serif = "var(--font-serif)";

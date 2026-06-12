@@ -22,7 +22,7 @@ async function verificarSesion(req: NextRequest): Promise<boolean> {
 
 function arecfUrl(): string {
   if (process.env.DGII_ARECF_URL) return process.env.DGII_ARECF_URL;
-  const amb = (process.env.DGII_AMBIENTE ?? "certecf").toLowerCase();
+  const amb = (process.env.DGII_AMBIENTE ?? "ecf").toLowerCase();
   if (amb === "certecf") return `${ECF_HOST}/CerteCF/AcuseRecibo/api/AcuseRecibo`;
   if (amb === "ecf")     return `${ECF_HOST}/ecf/emisorreceptor/fe/acuserecibo/api/ecf`;
   return `${ECF_HOST}/${amb}/emisorreceptor/fe/acuserecibo/api/ecf`;
@@ -68,8 +68,6 @@ async function enviarARECF(
   const url      = arecfUrl();
   const rnc      = RNC_COMPRADOR;
   const filename = `${rnc}${encf}.xml`;
-
-  console.log("[DGII/arecf] URL →", url);
 
   const form = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), filename);

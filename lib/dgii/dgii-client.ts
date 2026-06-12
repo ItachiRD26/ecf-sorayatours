@@ -6,7 +6,7 @@
 const ECF_HOST = "https://ecf.dgii.gov.do";
 const FC_HOST  = "https://fc.dgii.gov.do";
 
-function getAmb(): string { return process.env.DGII_AMBIENTE ?? "testecf"; }
+function getAmb(): string { return process.env.DGII_AMBIENTE ?? "ecf"; }
 
 // Rutas según Swagger oficial
 function urls() {
@@ -60,7 +60,7 @@ export async function getToken(): Promise<string> {
         tokenCache = { token: data.token, expira };
         return data.token;
       }
-      console.warn("[DGII] Token en Firestore expirado — renovar en /certificacion");
+      console.warn("[DGII] Token en Firestore expirado — se renovará automáticamente");
     }
   } catch (e) {
     console.warn("[DGII] No se pudo leer token de Firestore:", e instanceof Error ? e.message : e);

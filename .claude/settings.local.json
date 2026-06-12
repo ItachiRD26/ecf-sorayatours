@@ -17,7 +17,9 @@
       "Bash(findstr /v \".next\")",
       "Bash(findstr /v \"node_modules\")",
       "Bash(mkdir -p \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\semilla\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\ValidacionCertificado\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\recepcion\\\\api\\\\ecf\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\aprobacioncomercial\\\\api\\\\ecf\")",
-      "Bash(node -e \"const fs=require\\('fs'\\);const d=require\\('./node_modules/next/dist/compiled/webpack/bundle4.js'\\);console.log\\('ok'\\)\")"
+      "Bash(node -e \"const fs=require\\('fs'\\);const d=require\\('./node_modules/next/dist/compiled/webpack/bundle4.js'\\);console.log\\('ok'\\)\")",
+      "Bash(npm uninstall *)",
+      "Bash(npm run *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\WORK\\SORAYA Y LEONARDO TOURS\\soraya-tours-ecf\\app\\fe\\autenticacion\\api"
