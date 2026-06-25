@@ -17,9 +17,13 @@ function extraerSemilla(xml: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  const ua = req.headers.get("user-agent") ?? "desconocido";
+  console.log(`[fe/ValidacionCertificado] Solicitud recibida — IP: ${ip} — UA: ${ua}`);
   try {
     let xmlFirmado = "";
     const ct = req.headers.get("content-type") ?? "";
+    console.log(`[fe/ValidacionCertificado] Content-Type recibido: "${ct}"`);
 
     if (ct.includes("multipart/form-data")) {
       const form = await req.formData();
@@ -29,27 +33,35 @@ export async function POST(req: NextRequest) {
       } else if (typeof file === "string") {
         xmlFirmado = file;
       }
+      console.log(`[fe/ValidacionCertificado] Body parseado como multipart/form-data — campo "xml" presente: ${!!file}`);
     } else if (ct.includes("application/xml") || ct.includes("text/xml")) {
       xmlFirmado = await req.text();
     } else {
       xmlFirmado = await req.text();
     }
 
+    console.log(`[fe/ValidacionCertificado] Preview XML recibido (primeros 500 chars): ${xmlFirmado.slice(0, 500)}`);
+
     if (!xmlFirmado) {
+      console.warn("[fe/ValidacionCertificado] Body vacío — respondiendo 400");
       return NextResponse.json({ error: "XML requerido" }, { status: 400 });
     }
 
     // Extraer semilla del XML firmado
     const semilla = extraerSemilla(xmlFirmado);
+    console.log(`[fe/ValidacionCertificado] Semilla extraída: "${semilla}"`);
     if (!semilla) {
+      console.warn("[fe/ValidacionCertificado] No se pudo extraer semilla del XML — respondiendo 400");
       return NextResponse.json({ error: "Semilla no encontrada en XML" }, { status: 400 });
     }
 
     // Verificar semilla en Firestore (durante certificación aceptar aunque no esté en DB)
     const seedDoc = await adminDb.collection("receptor_seeds").doc(semilla).get();
+    console.log(`[fe/ValidacionCertificado] ¿Semilla "${semilla}" existe en receptor_seeds?: ${seedDoc.exists}`);
     if (seedDoc.exists) {
       const seedData = seedDoc.data() as { expira: string; usada: boolean };
       if (new Date(seedData.expira) < new Date()) {
+        console.warn(`[fe/ValidacionCertificado] Semilla "${semilla}" vencida (expiró ${seedData.expira}) — respondiendo 401`);
         return NextResponse.json({ error: "Semilla vencida" }, { status: 401 });
       }
       await adminDb.collection("receptor_seeds").doc(semilla).update({ usada: true });
@@ -80,7 +92,7 @@ export async function POST(req: NextRequest) {
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[fe/ValidacionCertificado]", msg);
+    console.error("[fe/ValidacionCertificado] ERROR procesando la solicitud:", msg, err instanceof Error ? err.stack : "");
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

@@ -70,21 +70,28 @@ function xmlResponse(body: string, status = 200): Response {
 }
 
 // GET — health-check
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  console.log(`[fe/recepcion] Health-check GET — IP: ${ip}`);
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?><ARECF><estado>OK</estado></ARECF>`);
 }
 
 // POST — recepción de e-CF desde DGII
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  const ua = req.headers.get("user-agent") ?? "desconocido";
+  console.log(`[fe/recepcion] Solicitud POST recibida — IP: ${ip} — UA: ${ua}`);
   try {
     // Verificar token (si no hay token, aún aceptar durante certificación — DGII puede no enviar token en paso 7)
     const tokenValido = await verificarToken(req);
+    console.log(`[fe/recepcion] Token Bearer ${tokenValido ? "VÁLIDO" : "inválido/ausente"}`);
     if (!tokenValido) {
       console.warn("[fe/recepcion] Petición sin token válido — procesando de todas formas (certificación)");
     }
 
     let xmlRecibido = "";
     const ct = req.headers.get("content-type") ?? "";
+    console.log(`[fe/recepcion] Content-Type recibido: "${ct}"`);
 
     if (ct.includes("multipart/form-data")) {
       const form = await req.formData();
@@ -94,10 +101,14 @@ export async function POST(req: NextRequest) {
       } else if (typeof file === "string") {
         xmlRecibido = file;
       }
+      console.log(`[fe/recepcion] Body parseado como multipart/form-data — campo "xml" presente: ${!!file}`);
     } else {
       const body = await req.text();
       xmlRecibido = body;
+      console.log(`[fe/recepcion] Body parseado como texto plano — longitud: ${body.length}`);
     }
+
+    console.log(`[fe/recepcion] Preview del XML recibido (primeros 500 chars): ${xmlRecibido.slice(0, 500)}`);
 
     if (!xmlRecibido) {
       console.warn("[fe/recepcion] Body vacío");
@@ -117,6 +128,11 @@ export async function POST(req: NextRequest) {
     const montoStr     = tag(xmlRecibido, "MontoTotal") || tag(xmlRecibido, "TotalFactura");
     const montoTotal   = parseFloat(montoStr) || 0;
     const fechaHora    = nowFmt();
+
+    console.log(`[fe/recepcion] Campos extraídos — eNCF: "${encf}" | tipoECF: "${tipoECF}" | rncEmisor: "${rncEmisor}" | rncComprador: "${rncComprador}" | fechaEmision: "${fechaEmision}" | montoTotal: ${montoTotal}`);
+    if (!encf) {
+      console.warn("[fe/recepcion] ⚠ No se pudo extraer eNCF del XML — el documento NO se guardará en facturas_recibidas");
+    }
 
     // Guardar en Firestore
     if (encf) {
@@ -144,11 +160,12 @@ export async function POST(req: NextRequest) {
       await adminDb.collection("facturas_recibidas").doc(encf).update({ xmlARECF: arecfFirmado });
     }
 
+    console.log(`[fe/recepcion] Respondiendo con ARECF firmado para eNCF "${encf || "0"}"`);
     return xmlResponse(arecfFirmado);
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[fe/recepcion]", msg);
+    console.error("[fe/recepcion] ERROR procesando la solicitud:", msg, err instanceof Error ? err.stack : "");
     // En caso de error devolver ARECF mínimo sin firma para no bloquear a DGII
     const fallback = buildARECF("0", "0", nowFmt());
     return xmlResponse(fallback);

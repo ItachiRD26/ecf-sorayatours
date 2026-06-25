@@ -3,14 +3,17 @@
 // Flujo inverso al que nosotros usamos para autenticarnos con DGII.
 // Respuesta: XML con <SemillaModel><semilla>RANDOM_HEX</semilla></SemillaModel>
 
-import { NextResponse }  from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { adminDb }       from "@/lib/firebase-admin";
 import { randomBytes }   from "crypto";
 
 // Semillas expiran en 10 minutos
 const TTL_MS = 10 * 60 * 1000;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  const ua = req.headers.get("user-agent") ?? "desconocido";
+  console.log(`[fe/semilla] Solicitud recibida — IP: ${ip} — UA: ${ua}`);
   try {
     // Generar semilla aleatoria de 8 chars hex
     const semilla = randomBytes(4).toString("hex").toUpperCase();
@@ -23,6 +26,8 @@ export async function GET() {
       usada: false,
       creadoEn: new Date().toISOString(),
     });
+
+    console.log(`[fe/semilla] Semilla generada: ${semilla}`);
 
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<SemillaModel>\n  <semilla>${semilla}</semilla>\n</SemillaModel>`;
 

@@ -1,0 +1,44 @@
+Asunto: e-CF recibido no notificado a URL de receptor registrada — Soraya y Leonardo Tours SRL (RNC 131217656)
+
+Buenas tardes,
+
+Somos emisores electrónicos certificados (certificación completada el 12/06/2026, ambiente de
+producción). Detectamos un caso donde un e-CF que nos fue emitido aparece registrado en nuestra
+Consulta de e-NCF Recibidos, pero nunca se nos notificó a través de nuestra URL de receptor.
+
+Datos del e-CF:
+- e-NCF: E310003460766
+- RNC Emisor: 101601175
+- Fecha Recepción (según su portal): 24/06/2026 04:08:17 P.M.
+- Monto Total: RD$1,338.54 — Total ITBIS: RD$204.18
+
+Nuestras URLs de receptor registradas en Mantenimiento Directorio de Facturadores Electrónicos
+(confirmadas activas y respondiendo correctamente en este momento):
+- URL Recepción ECF: https://ecf.sorayayleonardotours.com/fe/recepcion/api/ecf
+- URL Aprobación Comercial: https://ecf.sorayayleonardotours.com/fe/aprobacioncomercial/api/ecf
+- URL Autenticación: https://ecf.sorayayleonardotours.com/fe/autenticacion
+
+Antes de escribirles, verificamos exhaustivamente de nuestro lado:
+- El endpoint de recepción responde correctamente al health-check (GET) desde internet público.
+- Revisamos los logs completos de nuestro servidor (nginx y de la aplicación) cubriendo todo el
+  día 24/06/2026, incluyendo la ventana exacta de la hora de recepción indicada (04:08 PM) — no
+  hay ningún registro de que se haya intentado una conexión a nuestra URL de receptor para este
+  e-CF.
+- No hay firewall, restricción de red ni configuración de nuestro lado que pudiera estar
+  bloqueando la conexión.
+- Esta misma URL de receptor ya funcionó correctamente durante nuestro proceso de certificación
+  (recibimos y procesamos exitosamente los e-CF de prueba de los Pasos 7-11).
+
+Con esta evidencia, entendemos que el e-CF fue validado y registrado correctamente en su sistema
+central, pero el proceso de notificación push hacia nuestra URL de receptor no se ejecutó.
+
+Nuestra pregunta puntual: ¿qué dispara la notificación hacia la URL de receptor para un e-CF que
+ya aparece en la Consulta de e-NCF Recibidos? ¿Existe algún paso de activación o confirmación
+adicional que debamos completar para el ambiente de producción (distinto al de certificación), o
+se trata de un problema en su proceso de notificación que requiere revisión de su parte?
+
+Quedamos atentos a su respuesta.
+
+Saludos,
+Soraya y Leonardo Tours SRL
+RNC: 131-21765-6

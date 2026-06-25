@@ -57,20 +57,26 @@ function xmlResponse(body: string, status = 200): Response {
 }
 
 // GET — health-check
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  console.log(`[fe/aprobacioncomercial] Health-check GET — IP: ${ip}`);
   return xmlResponse(`<?xml version="1.0" encoding="UTF-8"?><ACECF><estado>OK</estado></ACECF>`);
 }
 
 // POST — DGII envía una ACECF, respondemos con nuestra ACECF firmada
 export async function POST(req: NextRequest) {
+  const ipEntrada = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "desconocida";
+  console.log(`[fe/aprobacioncomercial] Solicitud POST recibida — IP: ${ipEntrada}`);
   try {
     const tokenValido = await verificarToken(req);
+    console.log(`[fe/aprobacioncomercial] Token Bearer ${tokenValido ? "VÁLIDO" : "inválido/ausente"}`);
     if (!tokenValido) {
       console.warn("[fe/aprobacioncomercial] Sin token — procesando (certificación)");
     }
 
     let xmlRecibido = "";
     const ct = req.headers.get("content-type") ?? "";
+    console.log(`[fe/aprobacioncomercial] Content-Type recibido: "${ct}"`);
 
     if (ct.includes("multipart/form-data")) {
       const form = await req.formData();
@@ -83,6 +89,8 @@ export async function POST(req: NextRequest) {
     } else {
       xmlRecibido = await req.text();
     }
+
+    console.log(`[fe/aprobacioncomercial] Preview XML recibido (primeros 500 chars): ${xmlRecibido.slice(0, 500)}`);
 
     const fechaHora = nowFmt();
 
@@ -148,7 +156,7 @@ export async function POST(req: NextRequest) {
 
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[fe/aprobacioncomercial]", msg);
+    console.error("[fe/aprobacioncomercial] ERROR procesando la solicitud:", msg, err instanceof Error ? err.stack : "");
     // Fallback sin firma para no bloquear a DGII
     const fallback = buildACECF({
       rncEmisor: "0", encf: "0", fechaEmision: nowFmt().split(" ")[0],

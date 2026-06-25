@@ -19,10 +19,41 @@
       "Bash(mkdir -p \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\semilla\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\autenticacion\\\\api\\\\ValidacionCertificado\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\recepcion\\\\api\\\\ecf\" \"c:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\SORAYA Y LEONARDO TOURS\\\\soraya-tours-ecf\\\\app\\\\fe\\\\aprobacioncomercial\\\\api\\\\ecf\")",
       "Bash(node -e \"const fs=require\\('fs'\\);const d=require\\('./node_modules/next/dist/compiled/webpack/bundle4.js'\\);console.log\\('ok'\\)\")",
       "Bash(npm uninstall *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(cd \"C:/Users/User/Documents/WORK/SORAYA Y LEONARDO TOURS\" && ls -la)",
+      "Read(//c/Users/User/Documents/WORK/SORAYA Y LEONARDO TOURS/**)",
+      "Bash(cd \"C:/Users/User/Documents/WORK\" && ls -la)",
+      "Read(//c/Users/User/Documents/WORK/**)",
+      "Bash(mkdir -p \"/c/Users/User/Documents/WORK/referencia-certificacion-ecf/01-logica-activa/lib-dgii\" \\\\ *)",
+      "Bash(cp -v lib/dgii/*.ts __TRACKED_VAR__/01-logica-activa/lib-dgii/)",
+      "Bash(cp -v hooks/usesecuencias.ts __TRACKED_VAR__/01-logica-activa/hooks/)",
+      "Bash(ls types/)",
+      "Bash(xargs wc -l)",
+      "Bash(cd \"/c/Users/User/Documents/WORK/referencia-certificacion-ecf\" && find . -type f | sort)",
+      "Read(//c/c/Users/User/Documents/WORK/**)",
+      "Bash(npx --yes create-next-app@16.2.6 . --typescript --tailwind --eslint --app --import-alias \"@/*\" --use-npm --no-turbopack --no-src-dir --disable-git)",
+      "Bash(mkdir -p lib/dgii types hooks)",
+      "Bash(cp -v __TRACKED_VAR__/lib-dgii/*.ts lib/dgii/)",
+      "Bash(cp -v __TRACKED_VAR__/hooks/usesecuencias.ts hooks/)",
+      "Bash(cp -v __TRACKED_VAR__/types/index.ts types/)",
+      "Bash(ls components/modals/)",
+      "Bash(ls components/print/)",
+      "Bash(ls components/layout/)",
+      "Bash(ls components/ui/)",
+      "Bash(ls \"app/\\(dashboard\\)/\")",
+      "Bash(mkdir -p /c/Users/User/Documents/WORK/documentacion-sistema-facturacion)",
+      "Bash(rsync -a --relative --exclude node_modules --exclude .next --exclude .git --exclude .claude --exclude package-lock.json --exclude .env* --exclude tsconfig.tsbuildinfo --exclude next-env.d.ts --exclude SAAS-FACTURACION-DGII-BRIEF.md ./app ./components ./hooks ./lib ./types ./contexts ./public './documentacion dgii' ./proxy.ts ./next.config.ts ./package.json ./tsconfig.json ./eslint.config.mjs ./.eslintrc.json ./postcss.config.mjs ./AGENTS.md ./CLAUDE.md ./README.md ./factura.xml /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
+      "Bash(cp -r ./app /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
+      "Bash(cp -r ./components /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
+      "Bash(cp -r ./hooks /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
+      "Bash(cp -r ./lib /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
+      "Bash(DEST=\"/c/Users/User/Documents/WORK/documentacion-sistema-facturacion\" && \\\\ *)",
+      "Bash(grep -v \"^$\")"
     ],
     "additionalDirectories": [
-      "c:\\Users\\User\\Documents\\WORK\\SORAYA Y LEONARDO TOURS\\soraya-tours-ecf\\app\\fe\\autenticacion\\api"
+      "c:\\Users\\User\\Documents\\WORK\\SORAYA Y LEONARDO TOURS\\soraya-tours-ecf\\app\\fe\\autenticacion\\api",
+      "C:\\Users\\User\\Documents\\WORK\\referencia-certificacion-ecf\\01-logica-activa",
+      "C:\\Users\\User\\Documents\\WORK\\documentacion-sistema-facturacion"
     ]
   }
 }
