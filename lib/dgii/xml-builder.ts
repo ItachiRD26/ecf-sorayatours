@@ -25,6 +25,15 @@ export function fmtRNC(rnc: string): string {
   return d;
 }
 
+// Formato legible para representación impresa: 9 dígitos → XXX-XXXXX-X,
+// 11 dígitos (cédula) → XXX-XXXXXXX-X. Aplica fmtRNC primero.
+export function fmtRNCDisplay(rnc: string): string {
+  const d = fmtRNC(rnc);
+  if (d.length === 9)  return `${d.slice(0, 3)}-${d.slice(3, 8)}-${d.slice(8)}`;
+  if (d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 10)}-${d.slice(10)}`;
+  return d;
+}
+
 // YYYY-MM-DD → DD-MM-YYYY (formato DGII)
 function fmtFecha(fecha: string): string {
   if (!fecha) return "";

@@ -2,6 +2,7 @@
 
 import type { Factura, LineaServicio } from "@/types";
 import { fmt, fmtDate, calcLinea, calcTotales } from "@/types";
+import { fmtRNCDisplay } from "@/lib/dgii/xml-builder";
 import { QRCodeSVG } from "qrcode.react";
 
 const sans  = "var(--font-sans)";
@@ -92,7 +93,7 @@ export default function FacturaA4({ factura, cliente, empresa = DEFAULT_EMPRESA 
         <div>
           <div style={{ fontFamily: serif, fontSize: 20, fontWeight: 700, color: "#111", marginBottom: 5 }}>{e.nombre}</div>
           <div style={{ fontSize: 11, color: "#555", lineHeight: 1.9 }}>
-            <div>RNC: <strong style={{ fontFamily: mono }}>{e.rnc}</strong></div>
+            <div>RNC: <strong style={{ fontFamily: mono }}>{fmtRNCDisplay(e.rnc)}</strong></div>
             {e.direccion && <div>{e.direccion}</div>}
             {e.telefono  && <div>Tel: {e.telefono}</div>}
             <div><strong>Fecha Emision:</strong> {fmtDate(factura.fecha)}</div>

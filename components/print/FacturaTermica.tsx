@@ -2,6 +2,7 @@
 
 import type { Factura } from "@/types";
 import { fmt, fmtDate, calcLinea, calcTotales } from "@/types";
+import { fmtRNCDisplay } from "@/lib/dgii/xml-builder";
 import { QRCodeSVG } from "qrcode.react";
 
 interface Props {
@@ -29,7 +30,7 @@ export default function FacturaTermica({ factura, cliente, empresa = DEFAULT_EMP
       {/* Empresa */}
       <div style={{ textAlign: "center", marginBottom: 8 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{e.nombre}</div>
-        <div style={{ fontSize: 11 }}>RNC: {e.rnc}</div>
+        <div style={{ fontSize: 11 }}>RNC: {fmtRNCDisplay(e.rnc)}</div>
         {e.direccion && <div style={{ fontSize: 10 }}>{e.direccion}</div>}
         {e.telefono  && <div style={{ fontSize: 10 }}>Tel: {e.telefono}</div>}
       </div>
