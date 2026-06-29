@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse }                    from "next/server";
 import { adminAuth, adminDb }                           from "@/lib/firebase-admin";
-import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
+import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad, extraerFechaHoraFirmaISO } from "@/lib/dgii/qr-builder";
 import { fmtRNC }                                                from "@/lib/dgii/xml-builder";
 import { calcTotales }                                  from "@/types";
 import type { Factura }                                 from "@/types";
@@ -29,18 +29,6 @@ function tieneFormatoNuevo(_urlQR: string): boolean { return false; }
 function extraerSignature(xmlFirmado: string): string {
   const m = xmlFirmado.match(/<SignatureValue>([\s\S]*?)<\/SignatureValue>/);
   return m?.[1]?.replace(/\s/g, "") ?? "";
-}
-
-// Extrae FechaHoraFirma del XML y la devuelve como ISO para pasarla a formatFechaHoraQR
-function extraerFechaFirmaISO(xmlFirmado: string): string {
-  const m = xmlFirmado.match(/<FechaHoraFirma>([\s\S]*?)<\/FechaHoraFirma>/);
-  if (!m) return "";
-  const raw = m[1].trim(); // "dd-MM-yyyy HH:mm:ss"
-  const [dmy, time] = raw.split(" ");
-  if (!dmy || !time) return "";
-  const [d, mo, y] = dmy.split("-");
-  if (!d || !mo || !y) return "";
-  return `${y}-${mo}-${d}T${time}`; // ISO-like para formatFechaHoraQR
 }
 
 async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: string; error?: string }> {
@@ -69,7 +57,7 @@ async function regenerarUna(facturaId: string): Promise<{ ok: boolean; urlQR?: s
 
   // FechaFirma: del XML → fallback a fechaEnvioDGII
   // formatFechaHoraQR aplica el formato correcto según DGII_AMBIENTE (certecf/ecf)
-  const fechaISO = (factura.xmlFirmado ? extraerFechaFirmaISO(factura.xmlFirmado) : "") || factura.fechaEnvioDGII || "";
+  const fechaISO = (factura.xmlFirmado ? extraerFechaHoraFirmaISO(factura.xmlFirmado) : "") || factura.fechaEnvioDGII || "";
   const fechaFirmaFinal = fechaISO ? formatFechaHoraQR(fechaISO) : "";
 
   // Cargar cliente para RncComprador

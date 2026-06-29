@@ -3,7 +3,7 @@ import { adminAuth, adminDb }                           from "@/lib/firebase-adm
 import { buildXML, buildRFCEXml, LIMITE_RFCE, fmtRNC } from "@/lib/dgii/xml-builder";
 import { firmarXML }                                    from "@/lib/dgii/xml-signer";
 import { enviarECF, enviarRFCE }                        from "@/lib/dgii/dgii-client";
-import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad } from "@/lib/dgii/qr-builder";
+import { generarURLQR, formatFechaQR, formatFechaHoraQR, calcularCodigoSeguridad, extraerFechaHoraFirmaISO } from "@/lib/dgii/qr-builder";
 import type { Factura, Cliente }                        from "@/types";
 import { calcTotales }                                  from "@/types";
 
@@ -114,8 +114,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 8. Generar URL del timbre QR
-    const fechaEmision = formatFechaQR(factura.fecha);
-    const fechaFirma   = formatFechaHoraQR(new Date().toISOString());
+    // FechaFirma debe ser EXACTAMENTE la que quedó embebida en el XML firmado/enviado
+    // a la DGII — usar un new Date() nuevo aquí causa "no encontrada" en consultatimbre.
+    const fechaEmision  = formatFechaQR(factura.fecha);
+    const fechaFirmaISO = extraerFechaHoraFirmaISO(xmlFirmado);
+    const fechaFirma    = formatFechaHoraQR(fechaFirmaISO || new Date().toISOString());
     const urlQR = generarURLQR({
       tipoECF:       factura.tipoECF,
       rncEmisor:     fmtRNC(empresa.rnc),

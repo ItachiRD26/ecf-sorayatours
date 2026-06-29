@@ -43,11 +43,19 @@ function fmtFecha(fecha: string): string {
   return fecha;
 }
 
-// Genera FechaHoraFirma en formato dd-MM-YYYY HH:mm:ss
+// Genera FechaHoraFirma en formato dd-MM-YYYY HH:mm:ss, en hora de Rep. Dominicana.
+// Usa America/Santo_Domingo explícitamente (no depende del TZ del servidor/VPS) —
+// si el servidor corre en UTC, usar new Date().getHours() desfasa la firma 4 horas.
 function nowFechaHoraFirma(): string {
-  const n   = new Date();
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${pad(n.getDate())}-${pad(n.getMonth()+1)}-${n.getFullYear()} ${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23",
+  });
+  const parts = fmt.formatToParts(new Date());
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? "00";
+  return `${get("day")}-${get("month")}-${get("year")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
 function escapeXml(str: string): string {
