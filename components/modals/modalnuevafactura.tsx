@@ -269,7 +269,7 @@ function LineaItem({
           )}
 
           <span style={{ fontSize: 11, padding: "2px 6px", borderRadius: 3, fontFamily: sans, background: item.itbis === 0 ? "#f0faf4" : "#eff6ff", color: item.itbis === 0 ? "#166534" : "#1d4ed8", border: "1px solid " + (item.itbis === 0 ? "#bbf7d0" : "#bfdbfe") }}>
-            {item.itbis === 0 ? "Exento" : ("ITBIS " + item.itbis * 100 + "%")}
+            {item.itbis === 0 ? "Exento" : ("ITBIS " + item.itbis * 100 + "%" + (item.incluyeITBIS ? " incl." : ""))}
           </span>
 
           {item.descuentoMonto > 0 && (
@@ -767,15 +767,15 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
               let nuevaLinea: LineaServicio;
               if (isPurchase) {
                 // Compra: por persona simple
-                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: s.precioPorPersona ?? 0, tramoLabel: "", itbis: itbisOverride, cant: 1, pax: 1 };
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: s.precioPorPersona ?? 0, tramoLabel: "", itbis: itbisOverride, incluyeITBIS: s.incluyeITBIS, cant: 1, pax: 1 };
               } else if (hasTiersS) {
                 // Tour con tiers: inicializar vacío, el usuario ingresará adultos/niños
-                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: 0, tramoLabel: "", itbis: itbisOverride, cant: 1, pax: 0, adultos: 0, ninos5a7: 0, ninos0a4: 0 };
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: "por_persona", precio: 0, tramoLabel: "", itbis: itbisOverride, incluyeITBIS: s.incluyeITBIS, cant: 1, pax: 0, adultos: 0, ninos5a7: 0, ninos0a4: 0 };
               } else {
                 // Tour legacy con tramos fijos
                 const pax  = prev[showServicios!]?.pax || 0;
                 const tier = getTierPrice(s, pax, modo === "por_persona" ? "por_persona" : "por_grupo");
-                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: itbisOverride, cant: 1, pax };
+                nuevaLinea = { ...ITEM_VACIO, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: itbisOverride, incluyeITBIS: s.incluyeITBIS, cant: 1, pax };
               }
 
               const updated = prev.map((item, idx) => idx === showServicios ? nuevaLinea : item);

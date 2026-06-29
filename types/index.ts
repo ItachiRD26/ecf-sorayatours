@@ -53,6 +53,7 @@ export interface Servicio {
   precioTramo6_8?:   number;
   precioPorPersona?: number;
   itbis:             number;
+  incluyeITBIS?:     boolean;  // true → el precio ya tiene el ITBIS adentro
   activo:            boolean;
   creadoEn?:         string;
 }
@@ -184,6 +185,7 @@ export interface LineaServicio {
   precio:         number;     // RD$ por persona (total/pax) para XML y display
   descuentoMonto: number;     // RD$ de descuento sobre el bruto
   itbis:          number;
+  incluyeITBIS?:  boolean;    // true → "precio" ya tiene el ITBIS adentro (precio final)
   fechaTour?:     string;
 }
 
@@ -340,8 +342,18 @@ export function calcLinea(item: LineaServicio) {
   const bruto   = item.modo === "por_grupo"
     ? item.precio
     : item.precio * (item.pax || 1);
-  const descAmt  = Math.min(item.descuentoMonto || 0, bruto);
-  const sub      = Math.max(0, bruto - descAmt);
+  const descAmt = Math.min(item.descuentoMonto || 0, bruto);
+  const neto    = Math.max(0, bruto - descAmt);
+
+  // Si el precio ya incluye ITBIS, "neto" es el monto final a cobrar y hay
+  // que sacar el subtotal/ITBIS hacia atrás en vez de sumarlo encima.
+  if (item.incluyeITBIS && item.itbis > 0) {
+    const sub      = neto / (1 + item.itbis);
+    const itbisAmt = neto - sub;
+    return { bruto, descAmt, sub, itbisAmt, total: neto };
+  }
+
+  const sub      = neto;
   const itbisAmt = sub * (item.itbis || 0);
   return { bruto, descAmt, sub, itbisAmt, total: sub + itbisAmt };
 }

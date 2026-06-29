@@ -31,7 +31,7 @@ const EMPTY: Omit<Servicio, "id"> = {
   precioTramo3_5:   0,
   precioTramo6_8:   0,
   precioPorPersona: 0,
-  itbis: 0.18, activo: true,
+  itbis: 0.18, incluyeITBIS: false, activo: true,
 };
 
 interface Props {
@@ -96,8 +96,9 @@ export default function ModalServicioForm({ servicio, onSave, onClose, saving }:
       precioTramo3_5:   sorted[1]?.total ?? sorted[0]?.total ?? 0,
       precioTramo6_8:   sorted[2]?.total ?? sorted[1]?.total ?? 0,
       precioPorPersona: perPaxTier?.total ?? sorted[sorted.length - 1]?.total ?? 0,
-      itbis:   form.itbis,
-      activo:  form.activo,
+      itbis:        form.itbis,
+      incluyeITBIS: form.incluyeITBIS,
+      activo:       form.activo,
     });
   };
 
@@ -218,6 +219,18 @@ export default function ModalServicioForm({ servicio, onSave, onClose, saving }:
               );
             })}
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none", marginTop: 10 }}>
+            <div onClick={() => setF("incluyeITBIS", !form.incluyeITBIS)}
+              style={{ width: 18, height: 18, border: ("2px solid " + (form.incluyeITBIS ? "#0e7490" : "#d1d5db")), borderRadius: 4, background: form.incluyeITBIS ? "#0e7490" : "#fff", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, cursor: "pointer" }}>
+              {form.incluyeITBIS && <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>}
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500, fontFamily: sans, color: "#374151" }}>Precio incluye ITBIS</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", fontFamily: sans }}>
+                Los montos de la tabla de arriba son el total final a cobrar (el ITBIS se calcula hacia atrás, no se suma encima)
+              </div>
+            </div>
+          </label>
         </div>
 
         {/* Activo */}

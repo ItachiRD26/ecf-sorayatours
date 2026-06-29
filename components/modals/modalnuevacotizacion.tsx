@@ -266,7 +266,7 @@ export default function ModalNuevaCotizacion({ clientes, servicios, cotizaciones
             setItems((prev) => {
               const updated = prev.map((item, idx) =>
                 idx === showServicios
-                  ? { ...item, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: s.itbis, cant: 1, pax }
+                  ? { ...item, servicioId: s.id, fromCatalog: true, codigo: s.codigo, descripcion: s.nombre, modo: tier.modoResultante, precio: tier.precio, tramoLabel: tier.tramoLabel, itbis: s.itbis, incluyeITBIS: s.incluyeITBIS, cant: 1, pax }
                   : item
               );
               if (showServicios === prev.length - 1) updated.push({ ...ITEM_VACIO });
