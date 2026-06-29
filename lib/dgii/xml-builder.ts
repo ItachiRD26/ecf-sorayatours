@@ -210,9 +210,13 @@ function buildItems(items: LineaServicio[]): string {
     const c       = calcLinea(item);
     const paxDesc = item.pax > 0 ? ` | PAX: ${item.pax}` : "";
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo"
+    // Si el precio incluye ITBIS, CantidadItem × PrecioUnitarioItem debe dar el
+    // monto SIN impuesto (igual a MontoItem), así que se le saca el ITBIS al precio unitario.
+    const itbisFactor = item.incluyeITBIS && item.itbis > 0 ? (1 + item.itbis) : 1;
+    const precioU = (item.modo === "por_grupo"
       ? (c.bruto / Math.max(item.pax, 1))
-      : item.precio;
+      : item.precio) / itbisFactor;
+    const descMonto = item.descuentoMonto / itbisFactor;
     const descLarga = item.descripcion.length > 80 || paxDesc;
     const indFact = item.itbis === 0.18 ? 1 : item.itbis === 0.16 ? 2 : 4;
     return `<Item>
@@ -224,7 +228,7 @@ function buildItems(items: LineaServicio[]): string {
       <CantidadItem>${fmt(cant)}</CantidadItem>
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
-      ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
+      ${descMonto > 0 ? `<DescuentoMonto>${fmt(descMonto)}</DescuentoMonto>` : ""}
       <MontoItem>${fmt(c.sub)}</MontoItem>
     </Item>`;
   }).join("\n");
@@ -237,9 +241,11 @@ function buildItemsE41(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo"
+    const itbisFactor = item.incluyeITBIS && item.itbis > 0 ? (1 + item.itbis) : 1;
+    const precioU = (item.modo === "por_grupo"
       ? (c.bruto / Math.max(item.pax, 1))
-      : item.precio;
+      : item.precio) / itbisFactor;
+    const descMonto = item.descuentoMonto / itbisFactor;
     const indFact = item.itbis === 0.18 ? 1 : item.itbis === 0.16 ? 2 : 4;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
@@ -254,7 +260,7 @@ function buildItemsE41(items: LineaServicio[]): string {
       <CantidadItem>${fmt(cant)}</CantidadItem>
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
-      ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
+      ${descMonto > 0 ? `<DescuentoMonto>${fmt(descMonto)}</DescuentoMonto>` : ""}
       <MontoItem>${fmt(c.sub)}</MontoItem>
     </Item>`;
   }).join("\n");
@@ -266,9 +272,11 @@ function buildItemsE46(items: LineaServicio[]): string {
     const c       = calcLinea(item);
     const paxDesc = item.pax > 0 ? ` | PAX: ${item.pax}` : "";
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo"
+    const itbisFactor = item.incluyeITBIS && item.itbis > 0 ? (1 + item.itbis) : 1;
+    const precioU = (item.modo === "por_grupo"
       ? (c.bruto / Math.max(item.pax, 1))
-      : item.precio;
+      : item.precio) / itbisFactor;
+    const descMonto = item.descuentoMonto / itbisFactor;
     const descLarga = item.descripcion.length > 80 || paxDesc;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
@@ -279,7 +287,7 @@ function buildItemsE46(items: LineaServicio[]): string {
       <CantidadItem>${fmt(cant)}</CantidadItem>
       <UnidadMedida>43</UnidadMedida>
       <PrecioUnitarioItem>${fmt(precioU)}</PrecioUnitarioItem>
-      ${item.descuentoMonto > 0 ? `<DescuentoMonto>${fmt(item.descuentoMonto)}</DescuentoMonto>` : ""}
+      ${descMonto > 0 ? `<DescuentoMonto>${fmt(descMonto)}</DescuentoMonto>` : ""}
       <MontoItem>${fmt(c.sub)}</MontoItem>
     </Item>`;
   }).join("\n");
@@ -290,9 +298,10 @@ function buildItemsE47(items: LineaServicio[]): string {
   return items.map((item, i) => {
     const c       = calcLinea(item);
     const cant    = item.modo === "por_persona" ? (item.pax || 1) : Math.max(item.pax, 1);
-    const precioU = item.modo === "por_grupo"
+    const itbisFactor = item.incluyeITBIS && item.itbis > 0 ? (1 + item.itbis) : 1;
+    const precioU = (item.modo === "por_grupo"
       ? (c.bruto / Math.max(item.pax, 1))
-      : item.precio;
+      : item.precio) / itbisFactor;
     return `<Item>
       <NumeroLinea>${i + 1}</NumeroLinea>
       <IndicadorFacturacion>4</IndicadorFacturacion>
