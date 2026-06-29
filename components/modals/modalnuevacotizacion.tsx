@@ -196,7 +196,7 @@ export default function ModalNuevaCotizacion({ clientes, servicios, cotizaciones
                         <label style={{ ...labelStyle, fontSize: 10 }}>Desc. RD$</label>
                         <div style={{ position: "relative" }}>
                           <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#9ca3af", fontFamily: mono }}>$</span>
-                          <input type="number" min="0" step="1"
+                          <input type="number" min="0" step="0.01"
                             style={{ ...inputStyle, fontSize: 12, paddingLeft: 20, fontFamily: mono }}
                             value={item.descuentoMonto === 0 ? "" : item.descuentoMonto} placeholder="0"
                             onChange={(e) => { const val = e.target.value; updateItem(i)("descuentoMonto", val === "" ? 0 : parseFloat(val) || 0); }} />
