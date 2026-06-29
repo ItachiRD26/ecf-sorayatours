@@ -110,7 +110,7 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
       {/* Acciones DGII */}
       {!anulada && !yaEnviada && item("📤 Enviar a DGII", "#0e7490", onEnviarDGII)}
       {puedeConsultar && item("🔍 Consultar estado DGII", "#1d4ed8", onConsultarDGII)}
-      {urlVieja && item("🔄 Regenerar QR (formato DGII)", "#7c3aed", onRegenerarQR)}
+      {yaEnviada && item(urlVieja ? "🔄 Regenerar QR (formato DGII)" : "🔄 Regenerar QR", "#7c3aed", onRegenerarQR)}
       <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
       {item("📋 Nota de Débito (E33)",  "#374151", () => onNota("E33"), anulada)}
       {item("📋 Nota de Crédito (E34)", "#374151", () => onNota("E34"), anulada)}
