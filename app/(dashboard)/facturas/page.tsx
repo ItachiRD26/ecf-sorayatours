@@ -22,7 +22,7 @@ const sans  = "var(--font-sans)";
 const mono  = "var(--font-mono)";
 const serif = "var(--font-serif)";
 
-interface EmpresaConfig { nombre: string; rnc: string; direccion: string; telefono: string; }
+interface EmpresaConfig { nombre: string; rnc: string; direccion: string; telefono: string; vencimientoECF?: string; }
 
 // ── Badge estado DGII ─────────────────────────────────────────────
 function DgiiBadge({ estado }: { estado?: string }) {
@@ -501,7 +501,8 @@ export default function FacturasPage() {
 
       {showNueva && (
         <ModalNuevaFactura clientes={clientes} servicios={servicios} facturas={facturas}
-          onSave={handleGuardar} onClose={() => setShowNueva(false)} saving={saving} />
+          onSave={handleGuardar} onClose={() => setShowNueva(false)} saving={saving}
+          vencimientoECF={empresa?.vencimientoECF} />
       )}
       {showPrint && (
         <PrintModal factura={showPrint} cliente={clientes.find((c) => c.id === showPrint.clienteId)}

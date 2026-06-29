@@ -65,12 +65,13 @@ function clean<T extends object>(obj: T): Partial<T> {
 }
 
 interface Props {
-  clientes:  Cliente[];
-  servicios: Servicio[];
-  facturas:  Factura[];
-  onSave:    (data: Omit<Factura, "id">) => Promise<void>;
-  onClose:   () => void;
-  saving:    boolean;
+  clientes:       Cliente[];
+  servicios:      Servicio[];
+  facturas:       Factura[];
+  onSave:         (data: Omit<Factura, "id">) => Promise<void>;
+  onClose:        () => void;
+  saving:         boolean;
+  vencimientoECF?: string;
 }
 
 // ── Componente de linea de servicio ───────────────────────────────
@@ -304,7 +305,8 @@ function LineaItem({
 }
 
 // ── Modal principal ───────────────────────────────────────────────
-export default function ModalNuevaFactura({ clientes, servicios, facturas, onSave, onClose, saving }: Props) {
+export default function ModalNuevaFactura({ clientes, servicios, facturas, onSave, onClose, saving, vencimientoECF }: Props) {
+  const vencimientoDefault = vencimientoECF || "2027-12-31";
   const [esCompra,           setEsCompra]           = useState(false);
   const [esWalkIn,           setEsWalkIn]           = useState(false);
   const [nombreWalkIn,       setNombreWalkIn]       = useState("");
@@ -315,7 +317,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     tipoECF:        "E31" as import("@/types").TipoECF,
     clienteId:      "",
     fecha:          today(),
-    vencimientoECF: "2028-12-31",
+    vencimientoECF: vencimientoDefault,
     terminos:       "Contado" as typeof TERMINOS_PAGO[number],
     metodoPago:     "Efectivo" as MetodoPago,
     cotizacionRef:  "",
@@ -363,7 +365,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     !clienteSeleccionado?.rnc?.trim();
 
   const vencimientoPorTipo = (tipo: string): string =>
-    tipo === "E32" ? "2099-12-31" : "2028-12-31";
+    tipo === "E32" ? "2099-12-31" : vencimientoDefault;
 
   const updateItem = (i: number) => <K extends keyof LineaServicio>(k: K, v: LineaServicio[K]) =>
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
@@ -375,7 +377,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     setNombreWalkIn("");
     setTelefonoWalkIn("");
     setIdExtranjero("");
-    setForm((p) => ({ ...p, clienteId: "", tipoECF: v ? "E43" : "E31", vencimientoECF: "2028-12-31" }));
+    setForm((p) => ({ ...p, clienteId: "", tipoECF: v ? "E43" : "E31", vencimientoECF: vencimientoDefault }));
     setItems([{ ...ITEM_VACIO }]);
     setRncOcasional("");
     setEsExtranjeroOcasional(false);
