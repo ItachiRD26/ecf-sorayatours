@@ -1,7 +1,10 @@
 // Cliente DGII — URLs corregidas según Swagger oficial certecf
-// Recepción: /CerteCF/Recepcion/api/FacturasElectronicas  ← era /api/ecf (incorrecto)
-// RFCE:      /certecf/recepcionfc/api/recepcion/ecf       ← era /api/rfce (incorrecto)
-// Consulta:  /CerteCF/ConsultaResultado/api/Consultas/Estado
+// Recepción: /{ambiente}/Recepcion/api/FacturasElectronicas  ← era /api/ecf (incorrecto)
+// RFCE:      /{ambiente}/recepcionfc/api/recepcion/ecf       ← era /api/rfce (incorrecto)
+// Consulta:  /{ambiente}/ConsultaResultado/api/Consultas/Estado
+// DGII no distingue mayúsculas/minúsculas en estos servicios (ver Informe Técnico, "5.
+// Servicios no sensitivos a mayúsculas y minúsculas"), por lo que usar {ambiente} en vez
+// de "CerteCF" fijo es seguro para ecf/testecf/certecf por igual.
 
 const ECF_HOST = "https://ecf.dgii.gov.do";
 const FC_HOST  = "https://fc.dgii.gov.do";
@@ -14,9 +17,9 @@ function urls() {
   return {
     semilla:        `${ECF_HOST}/${amb}/autenticacion/api/Autenticacion/Semilla`,
     validarSemilla: `${ECF_HOST}/${amb}/autenticacion/api/Autenticacion/ValidarSemilla`,
-    recepcion:      `${ECF_HOST}/CerteCF/Recepcion/api/FacturasElectronicas`,
+    recepcion:      `${ECF_HOST}/${amb}/Recepcion/api/FacturasElectronicas`,
     rfce:           `${FC_HOST}/${amb}/recepcionfc/api/recepcion/ecf`,
-    consulta:       `${ECF_HOST}/CerteCF/ConsultaResultado/api/Consultas/Estado`,
+    consulta:       `${ECF_HOST}/${amb}/ConsultaResultado/api/Consultas/Estado`,
   };
 }
 
