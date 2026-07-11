@@ -172,7 +172,7 @@ function PrintCotizacion({
                         {item.fechaTour  && <div style={{ fontSize: 10, color: "#6b7280" }}>{"Fecha: " + fmtDate(item.fechaTour)}</div>}
                       </td>
                       <td style={{ padding: "9px 10px", fontSize: 11, color: "#6b7280" }}>{labelModo(item.modo)}</td>
-                      <td style={{ padding: "9px 10px", textAlign: "right", fontFamily: mono }}>{item.cant}</td>
+                      <td style={{ padding: "9px 10px", textAlign: "right", fontFamily: mono }}>{item.pax || "---"}</td>
                       <td style={{ padding: "9px 10px", textAlign: "right", fontFamily: mono, fontSize: 11 }}>{precioLabel}</td>
                       <td style={{ padding: "9px 10px", textAlign: "right", fontFamily: mono }}>
                         {c.descAmt > 0 ? <span style={{ color: "#dc2626" }}>{fmt(c.descAmt)}</span> : <span style={{ color: "#9ca3af" }}>---</span>}

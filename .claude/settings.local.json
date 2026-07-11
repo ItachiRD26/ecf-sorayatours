@@ -48,7 +48,19 @@
       "Bash(cp -r ./hooks /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
       "Bash(cp -r ./lib /c/Users/User/Documents/WORK/documentacion-sistema-facturacion/)",
       "Bash(DEST=\"/c/Users/User/Documents/WORK/documentacion-sistema-facturacion\" && \\\\ *)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "Bash(gh api *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(ls -la \"C:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\documentacion-sistema-facturacion\" 2>&1 || echo \"NO EXISTE\")",
+      "Read(//c/Users/User/Documents/WORK/documentacion-sistema-facturacion/**)",
+      "Bash(ls \"C:\\\\Users\\\\User\\\\Documents\\\\WORK\\\\\" 2>&1)",
+      "Read(//c/Users/User/Documents/**)",
+      "Bash(ls -la \"C:/Users/User/Documents/WORK/\")",
+      "Bash(cp \"SORAYA Y LEONARDO TOURS/soraya-tours-ecf/lib/dgii/xml-builder.ts\" \"documentacion-sistema-facturacion/lib/dgii/xml-builder.ts\")",
+      "Bash(cp \"SORAYA Y LEONARDO TOURS/soraya-tours-ecf/lib/dgii/qr-builder.ts\" \"documentacion-sistema-facturacion/lib/dgii/qr-builder.ts\")",
+      "Bash(cp \"SORAYA Y LEONARDO TOURS/soraya-tours-ecf/types/index.ts\" \"documentacion-sistema-facturacion/types/index.ts\")",
+      "Bash(cp \"SORAYA Y LEONARDO TOURS/soraya-tours-ecf/app/api/dgii/emitir/route.ts\" \"documentacion-sistema-facturacion/app/api/dgii/emitir/route.ts\")",
+      "Bash(cp \"SORAYA Y LEONARDO TOURS/soraya-tours-ecf/app/api/dgii/regenerar-qr/route.ts\" \"documentacion-sistema-facturacion/app/api/dgii/regenerar-qr/route.ts\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\User\\Documents\\WORK\\SORAYA Y LEONARDO TOURS\\soraya-tours-ecf\\app\\fe\\autenticacion\\api",
