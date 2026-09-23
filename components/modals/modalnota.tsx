@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Factura, LineaServicio, Cliente } from "@/types";
-import { fmt, today, calcLinea, calcTotales, genECF } from "@/types";
+import { fmt, today, calcLinea, calcTotales, genECF, ITBIS_RATES } from "@/types";
 import { nextSecuencia } from "@/hooks/usesecuencias";
 import Modal from "@/components/modals/modal";
 import Icon from "@/components/ui/icon";
@@ -32,10 +32,16 @@ const CODIGOS_MOD_E34 = [
   { value: "5", label: "5 - Referencia Factura de Consumo (< RD$250,000)" },
 ];
 
-const ITEM_VACIO: LineaServicio = {
+// El e-CF de la nota (E33/E34) es un e-CF completo: cada item exige su propio
+// IndicadorFacturacion de ITBIS (XSD e-CF 34/33, campo obligatorio), igual que
+// en cualquier factura. Por eso el item vacio hereda el ITBIS de la factura
+// referenciada -- lo mas comun es que la nota grave igual que el original.
+const itemVacio = (ref: Factura): LineaServicio => ({
   codigo: "", descripcion: "", modo: "por_persona",
-  cant: 1, pax: 0, precio: 0, descuentoMonto: 0, itbis: 0,
-};
+  cant: 1, pax: 0, precio: 0, descuentoMonto: 0,
+  itbis:        ref.items[0]?.itbis ?? 0,
+  incluyeITBIS: ref.items[0]?.incluyeITBIS ?? false,
+});
 
 function clean<T extends object>(obj: T): Partial<T> {
   const out: Partial<T> = {};
@@ -59,7 +65,7 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
   const [motivo,  setMotivo]  = useState(motivos[0]);
   const [codMod,  setCodMod]  = useState("1");
   const [notas,   setNotas]   = useState("");
-  const [items,   setItems]   = useState<LineaServicio[]>([{ ...ITEM_VACIO }]);
+  const [items,   setItems]   = useState<LineaServicio[]>([itemVacio(facturaRef)]);
 
   const cliente    = clientes.find((c) => c.id === facturaRef.clienteId);
   const t          = calcTotales(items);
@@ -150,7 +156,11 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
                       <div>
                         <label style={{ ...labelStyle, fontSize: 10 }}>Cant.</label>
                         <input type="number" min="0" style={{ ...inputStyle, fontSize: 12 }}
-                          value={item.cant || ""} onChange={(e) => setItem(i, "cant", parseFloat(e.target.value) || 1)} />
+                          value={item.pax || ""} onChange={(e) => {
+                            const v = parseFloat(e.target.value) || 1;
+                            setItem(i, "cant", v);
+                            setItem(i, "pax", v);
+                          }} />
                       </div>
                       <div>
                         <label style={{ ...labelStyle, fontSize: 10 }}>Monto Unit.</label>
@@ -162,6 +172,27 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
                         <Icon name="trash" size={13} />
                       </button>
                     </div>
+
+                    {/* ITBIS por item — campo obligatorio del e-CF (IndicadorFacturacion), debe
+                        reflejar el mismo tratamiento fiscal que la factura original */}
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", fontFamily: sans, textTransform: "uppercase", letterSpacing: "0.04em" }}>ITBIS</span>
+                      {ITBIS_RATES.map(({ val, label }) => {
+                        const active = item.itbis === val;
+                        return (
+                          <button key={val} type="button" onClick={() => setItem(i, "itbis", val)}
+                            style={{ padding: "4px 9px", fontSize: 11, borderRadius: 3, border: "1px solid " + (active ? accentBtn : "#d1d5db"), background: active ? accentBtn : "#fff", color: active ? "#fff" : "#374151", cursor: "pointer", fontFamily: sans }}>
+                            {label}
+                          </button>
+                        );
+                      })}
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#374151", fontFamily: sans, cursor: "pointer", marginLeft: 4 }}>
+                        <input type="checkbox" checked={!!item.incluyeITBIS}
+                          onChange={(e) => setItem(i, "incluyeITBIS", e.target.checked)} />
+                        ITBIS incluido
+                      </label>
+                    </div>
+
                     {item.descripcion && (
                       <div style={{ marginTop: 6, textAlign: "right", fontFamily: mono, fontSize: 12, color: accentColor }}>
                         {esCredito ? "Credito" : "Debito"}: <strong>RD$ {fmt(c.total)}</strong>
@@ -171,7 +202,7 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
                 );
               })}
             </div>
-            <button type="button" onClick={() => setItems((p) => [...p, { ...ITEM_VACIO }])}
+            <button type="button" onClick={() => setItems((p) => [...p, itemVacio(facturaRef)])}
               style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, padding: "8px 14px", background: "#fff", color: "#374151", border: "1px solid #d1d5db", borderRadius: 4, cursor: "pointer", fontSize: 12, fontFamily: sans }}>
               <Icon name="plus" size={13} /> Agregar Concepto
             </button>
