@@ -45,7 +45,7 @@ function DgiiBadge({ estado }: { estado?: string }) {
 }
 
 // ── Menu de acciones ──────────────────────────────────────────────
-function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII, onRegenerarQR }: {
+function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII, onRegenerarQR, onNotificarAnulacionDGII }: {
   factura:         Factura;
   onVer:           () => void;
   onNota:          (tipo: "E33" | "E34") => void;
@@ -53,6 +53,7 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
   onEnviarDGII:    () => void;
   onConsultarDGII: () => void;
   onRegenerarQR:   () => void;
+  onNotificarAnulacionDGII: () => void;
 }) {
   const [open,    setOpen]    = useState(false);
   const [pos,     setPos]     = useState({ top: 0, right: 0 });
@@ -86,6 +87,9 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
   const anulada        = factura.estado === "anulada";
   const yaEnviada      = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
   const puedeConsultar = !!factura.trackIdDGII;
+  // Anulada localmente pero la DGII nunca fue notificada (facturas anuladas
+  // antes de conectar /api/dgii/anular, o algun reintento fallido).
+  const faltaNotificarDGII = anulada && yaEnviada && factura.estadoDGII !== "Anulada";
   // URL vieja si: FechaFirma con guiones (dd-MM-yyyy) O E32 ≥250k apuntando a fc.dgii.gov.do
   const urlVieja = !!factura.urlQR && (
     /[?&]FechaFirma=\d{2}-\d{2}-\d{4}/.test(factura.urlQR)
@@ -111,6 +115,7 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
       {!anulada && !yaEnviada && item("📤 Enviar a DGII", "#0e7490", onEnviarDGII)}
       {puedeConsultar && item("🔍 Consultar estado DGII", "#1d4ed8", onConsultarDGII)}
       {yaEnviada && item(urlVieja ? "🔄 Regenerar QR (formato DGII)" : "🔄 Regenerar QR", "#7c3aed", onRegenerarQR)}
+      {faltaNotificarDGII && item("⚠️ Notificar anulación a DGII", "#dc2626", onNotificarAnulacionDGII)}
       <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
       {item("📋 Nota de Débito (E33)",  "#374151", () => onNota("E33"), anulada)}
       {item("📋 Nota de Crédito (E34)", "#374151", () => onNota("E34"), anulada)}
@@ -528,6 +533,7 @@ export default function FacturasPage() {
                         onEnviarDGII={() => handleEnviarDGII(f)}
                         onConsultarDGII={() => handleConsultarDGII(f)}
                         onRegenerarQR={() => handleRegenerarQR(f)}
+                        onNotificarAnulacionDGII={() => handleAnular(f)}
                       />
                     </td>
                   </tr>
