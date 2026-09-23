@@ -216,13 +216,55 @@ export default function FacturasPage() {
     finally { setSaving(false); }
   };
 
+  // ── Anular factura ────────────────────────────────────────────
+  // Si el e-CF ya fue transmitido a la DGII, hay que notificar la
+  // anulacion alla (ANECF) antes de marcarla como anulada localmente.
+  // Si nunca se envio, la DGII no tiene registro de ese eNCF y basta
+  // con el cambio de estado local (comportamiento previo, sin tocar).
+  const handleAnular = async (f: Factura) => {
+    const yaEnviada = !!f.estadoDGII && f.estadoDGII !== "pendiente";
+
+    const ok = await confirm({
+      titulo:  "Anular factura",
+      mensaje: yaEnviada
+        ? `Anular ${f.eCF}? Esto notificara la anulacion a la DGII. Esta accion no puede deshacerse.`
+        : `Anular ${f.eCF}? Esta accion no puede deshacerse.`,
+      btnOk:   "Anular",
+      peligro: true,
+    });
+    if (!ok) return;
+
+    if (!yaEnviada) {
+      await cambiarEstado(f.id, "anulada");
+      push({ tipo: "warning", mensaje: "Factura anulada" });
+      return;
+    }
+
+    setEnviando(f.id);
+    try {
+      const res = await fetch("/api/dgii/anular", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ facturaId: f.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Error al anular ante la DGII");
+      push({ tipo: "warning", mensaje: `${f.eCF} anulado ante la DGII` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error desconocido";
+      push({ tipo: "error", mensaje: `Error al anular: ${msg}` });
+    } finally {
+      setEnviando(null);
+    }
+  };
+
   const handleEstado = async (f: Factura, estado: import("@/types").EstadoFactura) => {
     if (estado === "anulada") {
-      const ok = await confirm({ titulo: "Anular factura", mensaje: `Anular ${f.eCF}? Esta accion no puede deshacerse.`, btnOk: "Anular", peligro: true });
-      if (!ok) return;
+      await handleAnular(f);
+      return;
     }
     await cambiarEstado(f.id, estado);
-    push({ tipo: estado === "anulada" ? "warning" : "success", mensaje: `Factura ${estado}` });
+    push({ tipo: "success", mensaje: `Factura ${estado}` });
   };
 
   const handleNota = async (data: Omit<Factura, "id">) => {
