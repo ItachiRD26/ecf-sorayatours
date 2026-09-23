@@ -33,21 +33,47 @@ export async function POST(req: NextRequest) {
     const empresa = empresaSnap.data()!;
     const rnc     = (empresa.rnc as string).replace(/\D/g, "");
 
-    // ANECF — formato de anulación según XSD de DGII
+    // El servicio de Anulación (ANECF) de la DGII SOLO acepta secuencias que
+    // nunca fueron enviadas a la DGII ni al receptor (ver Informe Técnico e-CF
+    // "10. Correcciones y Anulación de un e-CF" y "Formato de Anulación de
+    // e-NCF v1.0"). Un e-CF ya transmitido/aceptado no se puede anular así —
+    // la DGII exige una Nota de Crédito Electrónica (E34) para esos casos.
+    const yaEnviada = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
+    if (yaEnviada) {
+      return NextResponse.json(
+        { error: "Este e-CF ya fue transmitido a la DGII. La DGII no permite anularlo con ANECF — emite una Nota de Crédito (E34) que lo referencie." },
+        { status: 409 }
+      );
+    }
+
+    const tipoNum = parseInt(String(factura.tipoECF).replace(/\D/g, ""), 10);
+    const ahora   = new Date();
+    const pad     = (n: number) => String(n).padStart(2, "0");
+    const fechaHoraAnulacion =
+      `${pad(ahora.getDate())}-${pad(ahora.getMonth() + 1)}-${ahora.getFullYear()} ` +
+      `${pad(ahora.getHours())}:${pad(ahora.getMinutes())}:${pad(ahora.getSeconds())}`;
+
+    // ANECF — formato según XSD oficial de DGII (ANECF v1.0.xsd)
     const xmlAnulacion = `<?xml version="1.0" encoding="UTF-8"?>
 <ANECF>
   <Encabezado>
     <Version>1.0</Version>
-    <IdDoc>
-      <RNCEmisor>${rnc}</RNCEmisor>
-      <TipoAnulacion>1</TipoAnulacion>
-    </IdDoc>
+    <RncEmisor>${rnc}</RncEmisor>
+    <CantidadeNCFAnulados>1</CantidadeNCFAnulados>
+    <FechaHoraAnulacioneNCF>${fechaHoraAnulacion}</FechaHoraAnulacioneNCF>
   </Encabezado>
   <DetalleAnulacion>
-    <ItemAnulacion>
-      <eNCFDesde>${factura.eCF}</eNCFDesde>
-      <eNCFHasta>${factura.eCF}</eNCFHasta>
-    </ItemAnulacion>
+    <Anulacion>
+      <NoLinea>1</NoLinea>
+      <TipoeCF>${tipoNum}</TipoeCF>
+      <TablaRangoSecuenciasAnuladaseNCF>
+        <Secuencias>
+          <SecuenciaeNCFDesde>${factura.eCF}</SecuenciaeNCFDesde>
+          <SecuenciaeNCFHasta>${factura.eCF}</SecuenciaeNCFHasta>
+        </Secuencias>
+      </TablaRangoSecuenciasAnuladaseNCF>
+      <CantidadeNCFAnulados>1</CantidadeNCFAnulados>
+    </Anulacion>
   </DetalleAnulacion>
 </ANECF>`;
 

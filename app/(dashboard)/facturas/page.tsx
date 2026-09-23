@@ -45,7 +45,7 @@ function DgiiBadge({ estado }: { estado?: string }) {
 }
 
 // ── Menu de acciones ──────────────────────────────────────────────
-function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII, onRegenerarQR, onNotificarAnulacionDGII }: {
+function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsultarDGII, onRegenerarQR }: {
   factura:         Factura;
   onVer:           () => void;
   onNota:          (tipo: "E33" | "E34") => void;
@@ -53,7 +53,6 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
   onEnviarDGII:    () => void;
   onConsultarDGII: () => void;
   onRegenerarQR:   () => void;
-  onNotificarAnulacionDGII: () => void;
 }) {
   const [open,    setOpen]    = useState(false);
   const [pos,     setPos]     = useState({ top: 0, right: 0 });
@@ -87,9 +86,6 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
   const anulada        = factura.estado === "anulada";
   const yaEnviada      = !!factura.estadoDGII && factura.estadoDGII !== "pendiente";
   const puedeConsultar = !!factura.trackIdDGII;
-  // Anulada localmente pero la DGII nunca fue notificada (facturas anuladas
-  // antes de conectar /api/dgii/anular, o algun reintento fallido).
-  const faltaNotificarDGII = anulada && yaEnviada && factura.estadoDGII !== "Anulada";
   // URL vieja si: FechaFirma con guiones (dd-MM-yyyy) O E32 ≥250k apuntando a fc.dgii.gov.do
   const urlVieja = !!factura.urlQR && (
     /[?&]FechaFirma=\d{2}-\d{2}-\d{4}/.test(factura.urlQR)
@@ -115,10 +111,12 @@ function MenuAcciones({ factura, onVer, onNota, onEstado, onEnviarDGII, onConsul
       {!anulada && !yaEnviada && item("📤 Enviar a DGII", "#0e7490", onEnviarDGII)}
       {puedeConsultar && item("🔍 Consultar estado DGII", "#1d4ed8", onConsultarDGII)}
       {yaEnviada && item(urlVieja ? "🔄 Regenerar QR (formato DGII)" : "🔄 Regenerar QR", "#7c3aed", onRegenerarQR)}
-      {faltaNotificarDGII && item("⚠️ Notificar anulación a DGII", "#dc2626", onNotificarAnulacionDGII)}
       <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
-      {item("📋 Nota de Débito (E33)",  "#374151", () => onNota("E33"), anulada)}
-      {item("📋 Nota de Crédito (E34)", "#374151", () => onNota("E34"), anulada)}
+      {/* Si esta anulada localmente pero si fue transmitida a la DGII, las Notas
+          siguen habilitadas: es la unica forma valida de corregirlo ante la DGII
+          (ANECF no aplica a e-CF ya enviados/aceptados, solo Nota de Credito). */}
+      {item("📋 Nota de Débito (E33)",  "#374151", () => onNota("E33"), anulada && !yaEnviada)}
+      {item("📋 Nota de Crédito (E34)", "#374151", () => onNota("E34"), anulada && !yaEnviada)}
       <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
       {factura.estado !== "pagada"    && item("✓ Marcar como Pagada",    "#166534", () => onEstado("pagada"),    anulada)}
       {factura.estado !== "pendiente" && item("◷ Marcar como Pendiente", "#1d4ed8", () => onEstado("pendiente"), anulada)}
@@ -222,45 +220,35 @@ export default function FacturasPage() {
   };
 
   // ── Anular factura ────────────────────────────────────────────
-  // Si el e-CF ya fue transmitido a la DGII, hay que notificar la
-  // anulacion alla (ANECF) antes de marcarla como anulada localmente.
-  // Si nunca se envio, la DGII no tiene registro de ese eNCF y basta
-  // con el cambio de estado local (comportamiento previo, sin tocar).
+  // Segun la normativa DGII (Informe Tecnico e-CF, "10. Correcciones y
+  // Anulacion de un e-CF" y "Formato de Anulacion de e-NCF"), el servicio
+  // de Anulacion (ANECF) SOLO aplica a secuencias que nunca fueron
+  // enviadas a la DGII ni al receptor. Un e-CF ya transmitido/aceptado NO
+  // se puede anular con ANECF -- la unica via valida es emitir una Nota
+  // de Credito (E34) que lo referencie. Por eso este boton nunca llama a
+  // la DGII para una factura ya enviada; solo marca el estado local y
+  // orienta a usar la Nota de Credito, que es la accion que si tiene
+  // efecto fiscal real.
   const handleAnular = async (f: Factura) => {
     const yaEnviada = !!f.estadoDGII && f.estadoDGII !== "pendiente";
 
     const ok = await confirm({
       titulo:  "Anular factura",
       mensaje: yaEnviada
-        ? `Anular ${f.eCF}? Esto notificara la anulacion a la DGII. Esta accion no puede deshacerse.`
+        ? `${f.eCF} ya fue transmitida a la DGII. La DGII no permite anular un e-CF ya enviado/aceptado -- para anularlo ante la DGII debes emitir una Nota de Credito (E34) que lo referencie. Esto solo la marcara como anulada en el sistema.`
         : `Anular ${f.eCF}? Esta accion no puede deshacerse.`,
-      btnOk:   "Anular",
+      btnOk:   yaEnviada ? "Marcar como anulada (solo local)" : "Anular",
       peligro: true,
     });
     if (!ok) return;
 
-    if (!yaEnviada) {
-      await cambiarEstado(f.id, "anulada");
-      push({ tipo: "warning", mensaje: "Factura anulada" });
-      return;
-    }
-
-    setEnviando(f.id);
-    try {
-      const res = await fetch("/api/dgii/anular", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ facturaId: f.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Error al anular ante la DGII");
-      push({ tipo: "warning", mensaje: `${f.eCF} anulado ante la DGII` });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Error desconocido";
-      push({ tipo: "error", mensaje: `Error al anular: ${msg}` });
-    } finally {
-      setEnviando(null);
-    }
+    await cambiarEstado(f.id, "anulada");
+    push({
+      tipo:    "warning",
+      mensaje: yaEnviada
+        ? "Factura marcada como anulada. Recuerda emitir una Nota de Credito (E34) para anularla ante la DGII."
+        : "Factura anulada",
+    });
   };
 
   const handleEstado = async (f: Factura, estado: import("@/types").EstadoFactura) => {
@@ -533,7 +521,6 @@ export default function FacturasPage() {
                         onEnviarDGII={() => handleEnviarDGII(f)}
                         onConsultarDGII={() => handleConsultarDGII(f)}
                         onRegenerarQR={() => handleRegenerarQR(f)}
-                        onNotificarAnulacionDGII={() => handleAnular(f)}
                       />
                     </td>
                   </tr>

@@ -20,6 +20,7 @@ function urls() {
     recepcion:      `${ECF_HOST}/${amb}/Recepcion/api/FacturasElectronicas`,
     rfce:           `${FC_HOST}/${amb}/recepcionfc/api/recepcion/ecf`,
     consulta:       `${ECF_HOST}/${amb}/ConsultaResultado/api/Consultas/Estado`,
+    anulacion:      `${ECF_HOST}/${amb}/anulacionrangos/api/operaciones/anularrango`,
   };
 }
 
@@ -164,7 +165,7 @@ export async function anularENCF(xmlFirmado: string): Promise<void> {
   const token = await getToken();
   const form  = new FormData();
   form.append("xml", new Blob([xmlFirmado], { type: "text/xml" }), "anulacion.xml");
-  const res = await fetch(`${ECF_HOST}/${getAmb()}/anulacion/api/Anulacion`, {
+  const res = await fetch(urls().anulacion, {
     method: "POST",
     headers: authHeaders(token),
     body: form,
