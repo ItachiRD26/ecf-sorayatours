@@ -22,11 +22,14 @@ const labelStyle: React.CSSProperties = {
 const MOTIVOS_CREDITO = ["Anulacion de operacion","Devolucion de servicio","Descuento posterior","Error en precio","Error en cantidad","Otro"];
 const MOTIVOS_DEBITO  = ["Intereses por mora","Gastos adicionales","Diferencia de precio","Otro"];
 
+// Valores segun XSD oficial DGII (e-CF 34 v.1.0.xsd, CodigoModificacionType) —
+// este valor se manda tal cual en <CodigoModificacion>, sin traducir.
 const CODIGOS_MOD_E34 = [
-  { value: "1", label: "1 - Descuento" },
+  { value: "1", label: "1 - Anula el comprobante modificado" },
   { value: "2", label: "2 - Corrige Texto (monto debe ser 0)" },
-  { value: "3", label: "3 - Devolucion" },
-  { value: "4", label: "4 - Corrige Monto" },
+  { value: "3", label: "3 - Corrige montos del comprobante" },
+  { value: "4", label: "4 - Reemplazo por contingencia" },
+  { value: "5", label: "5 - Referencia Factura de Consumo (< RD$250,000)" },
 ];
 
 const ITEM_VACIO: LineaServicio = {
