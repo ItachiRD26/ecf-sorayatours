@@ -5,7 +5,7 @@ import type { Factura, LineaServicio, Cliente, Servicio, ModoLinea } from "@/typ
 import {
   fmt, today, localDate, calcLinea, calcTotales,
   genECF, TIPOS_ECF, TERMINOS_PAGO, PLAZOS_CREDITO,
-  resolverECFConfig, labelModo, getTierPrice, computeTourPrice,
+  resolverECFConfig, labelModo, getTierPrice, computeTourPrice, ITBIS_RATES,
 } from "@/types";
 import { nextSecuencia }      from "@/hooks/usesecuencias";
 import Modal                  from "@/components/modals/modal";
@@ -76,7 +76,7 @@ interface Props {
 
 // ── Componente de linea de servicio ───────────────────────────────
 function LineaItem({
-  item, idx, total, servicios, onChange, onDelete, onSelectServicio, isPurchase,
+  item, idx, total, servicios, onChange, onDelete, onSelectServicio, isPurchase, forceExento,
 }: {
   item:             LineaServicio;
   idx:              number;
@@ -86,6 +86,7 @@ function LineaItem({
   onDelete:         () => void;
   onSelectServicio: () => void;
   isPurchase:       boolean;
+  forceExento:      boolean;
 }) {
   const c        = calcLinea(item);
   const locked   = !!item.fromCatalog;
@@ -94,13 +95,21 @@ function LineaItem({
   // ¿El servicio usa pricing por tiers? (nuevos tours)
   const hasTiers = !isPurchase && locked && !!servicio?.tiers?.length;
 
+  // Precio manual: siempre disponible para líneas sin catálogo; para líneas
+  // de catálogo se activa con el toggle "Precio especial" y congela el precio
+  // (deja de recalcularse por tramos/pax).
+  const manualPrecio = !locked || !!item.precioManual;
+
+  useEffect(() => {
+    if (forceExento && item.itbis !== 0) onChange("itbis", 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceExento]);
+
   // Recalcula precio cuando cambian adultos/ninos en servicios con tiers
+  // (si el precio está fijado manualmente, solo actualiza el desglose de personas)
   const recalcularTiers = (adultos: number, ninos5a7: number, ninos0a4: number) => {
     if (!servicio?.tiers?.length) return;
-    const efectivoPax = adultos + ninos5a7 * 0.5;
-    const totalDOP    = computeTourPrice(servicio.tiers, efectivoPax);
-    const paxTotal    = adultos + ninos5a7 + ninos0a4;
-    const precioPP    = paxTotal > 0 ? Math.round(totalDOP / paxTotal) : 0;
+    const paxTotal = adultos + ninos5a7 + ninos0a4;
     const partes: string[] = [];
     if (adultos  > 0) partes.push(adultos  + " adulto" + (adultos  > 1 ? "s" : ""));
     if (ninos5a7 > 0) partes.push(ninos5a7 + " niño"   + (ninos5a7 > 1 ? "s" : "") + " (5-7, 50%)");
@@ -109,13 +118,18 @@ function LineaItem({
     onChange("ninos5a7", ninos5a7);
     onChange("ninos0a4", ninos0a4);
     onChange("pax",      paxTotal);
-    onChange("precio",   precioPP);
     onChange("tramoLabel" as keyof LineaServicio, partes.join(" + ") as LineaServicio[keyof LineaServicio]);
+    if (!item.precioManual) {
+      const efectivoPax = adultos + ninos5a7 * 0.5;
+      const totalDOP    = computeTourPrice(servicio.tiers, efectivoPax);
+      const precioPP    = paxTotal > 0 ? Math.round(totalDOP / paxTotal) : 0;
+      onChange("precio", precioPP);
+    }
   };
 
   const handlePaxChange = (val: string) => {
     const pax = val === "" ? 0 : parseInt(val) || 0;
-    if (!isPurchase && locked && servicio && !hasTiers) {
+    if (!isPurchase && locked && servicio && !hasTiers && !item.precioManual) {
       const tier = getTierPrice(servicio, pax, item.modo === "por_persona" ? "por_persona" : "por_grupo");
       onChange("pax",        pax);
       onChange("precio",     tier.precio);
@@ -123,6 +137,33 @@ function LineaItem({
       onChange("tramoLabel" as keyof LineaServicio, tier.tramoLabel as LineaServicio[keyof LineaServicio]);
     } else {
       onChange("pax", pax);
+    }
+  };
+
+  const togglePrecioManual = () => {
+    const next = !item.precioManual;
+    onChange("precioManual", next);
+    // Al activar, congela el precio actual como punto de partida editable.
+    // Al desactivar, vuelve a calcular desde el catálogo según el pax actual
+    // (no se puede reusar recalcularTiers aquí: "item" todavía trae el precioManual
+    // viejo en este render, así que se recalcula directo en vez de delegar).
+    if (!next && servicio) {
+      if (hasTiers && servicio.tiers?.length) {
+        const adultos     = item.adultos ?? 0;
+        const ninos5a7     = item.ninos5a7 ?? 0;
+        const ninos0a4     = item.ninos0a4 ?? 0;
+        const efectivoPax  = adultos + ninos5a7 * 0.5;
+        const totalDOP     = computeTourPrice(servicio.tiers, efectivoPax);
+        const paxTotal     = adultos + ninos5a7 + ninos0a4;
+        const precioPP     = paxTotal > 0 ? Math.round(totalDOP / paxTotal) : 0;
+        onChange("precio", precioPP);
+        onChange("modo",   "por_persona");
+      } else {
+        const tier = getTierPrice(servicio, item.pax, item.modo === "por_persona" ? "por_persona" : "por_grupo");
+        onChange("precio",     tier.precio);
+        onChange("modo",       tier.modoResultante);
+        onChange("tramoLabel" as keyof LineaServicio, tier.tramoLabel as LineaServicio[keyof LineaServicio]);
+      }
     }
   };
 
@@ -162,10 +203,18 @@ function LineaItem({
             value={item.descripcion} readOnly={locked} placeholder="Descripcion del servicio"
             onChange={locked ? () => {} : (e) => onChange("descripcion", e.target.value)} />
         </div>
-        <button type="button" onClick={onDelete} disabled={total === 1}
-          style={{ background: "none", border: "1px solid #fecaca", borderRadius: 4, padding: "6px 8px", cursor: total === 1 ? "not-allowed" : "pointer", color: "#dc2626", display: "flex", alignItems: "center", opacity: total === 1 ? 0.4 : 1 }}>
-          <Icon name="trash" size={13} />
-        </button>
+        <div style={{ display: "flex", gap: 4 }}>
+          {locked && (
+            <button type="button" onClick={togglePrecioManual} title="Fijar un precio especial para esta línea, sin depender de los tramos"
+              style={{ background: item.precioManual ? "#92400e" : "none", border: "1px solid " + (item.precioManual ? "#92400e" : "#fde68a"), borderRadius: 4, padding: "6px 8px", cursor: "pointer", color: item.precioManual ? "#fff" : "#92400e", display: "flex", alignItems: "center", fontSize: 11, fontFamily: sans, fontWeight: 600, whiteSpace: "nowrap" }}>
+              {item.precioManual ? "✕ Precio especial" : "Precio especial"}
+            </button>
+          )}
+          <button type="button" onClick={onDelete} disabled={total === 1}
+            style={{ background: "none", border: "1px solid #fecaca", borderRadius: 4, padding: "6px 8px", cursor: total === 1 ? "not-allowed" : "pointer", color: "#dc2626", display: "flex", alignItems: "center", opacity: total === 1 ? 0.4 : 1 }}>
+            <Icon name="trash" size={13} />
+          </button>
+        </div>
       </div>
 
       {/* Fila de personas / PAX */}
@@ -242,13 +291,77 @@ function LineaItem({
         </div>
       )}
 
+      {/* Precio manual — activo para líneas sin catálogo o con "Precio especial" */}
+      {manualPrecio && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "end", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, padding: "8px 10px", marginBottom: 8 }}>
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: "#92400e" }}>
+              {item.modo === "por_grupo" ? "Precio Total" : "Precio / persona"}
+            </label>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", left: 7, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "#9ca3af", fontFamily: mono }}>$</span>
+              <input type="number" min="0" step="0.01"
+                style={{ ...inputStyle, fontSize: 13, fontWeight: 700, paddingLeft: 18, fontFamily: mono, textAlign: "right", width: 130 }}
+                value={item.precio === 0 ? "" : item.precio} placeholder="0"
+                onChange={(e) => onChange("precio", parseFloat(e.target.value) || 0)} />
+            </div>
+          </div>
+
+          {!isPurchase && (
+            <div>
+              <label style={{ ...labelStyle, fontSize: 10, color: "#92400e" }}>Modo</label>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button type="button" onClick={() => onChange("modo", "por_grupo")}
+                  style={{ padding: "6px 10px", fontSize: 11, borderRadius: 3, border: "1px solid " + (item.modo === "por_grupo" ? "#92400e" : "#e5e7eb"), background: item.modo === "por_grupo" ? "#92400e" : "#fff", color: item.modo === "por_grupo" ? "#fff" : "#374151", cursor: "pointer", fontFamily: sans }}>
+                  Total
+                </button>
+                <button type="button" onClick={() => onChange("modo", "por_persona")}
+                  style={{ padding: "6px 10px", fontSize: 11, borderRadius: 3, border: "1px solid " + (item.modo === "por_persona" ? "#92400e" : "#e5e7eb"), background: item.modo === "por_persona" ? "#92400e" : "#fff", color: item.modo === "por_persona" ? "#fff" : "#374151", cursor: "pointer", fontFamily: sans }}>
+                  × PAX
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label style={{ ...labelStyle, fontSize: 10, color: "#92400e" }}>ITBIS</label>
+            {forceExento ? (
+              <div style={{ fontSize: 11, color: "#166534", fontFamily: sans, padding: "7px 0" }}>Exento (compra)</div>
+            ) : (
+              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                {ITBIS_RATES.map(({ val, label }) => {
+                  const active = item.itbis === val;
+                  return (
+                    <button key={val} type="button" onClick={() => onChange("itbis", val)}
+                      style={{ padding: "5px 8px", fontSize: 10, borderRadius: 3, border: "1px solid " + (active ? "#92400e" : "#e5e7eb"), background: active ? "#92400e" : "#fff", color: active ? "#fff" : "#374151", cursor: "pointer", fontFamily: sans }}>
+                      {label}
+                    </button>
+                  );
+                })}
+                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#374151", fontFamily: sans, cursor: "pointer", marginLeft: 4 }}>
+                  <input type="checkbox" checked={!!item.incluyeITBIS}
+                    onChange={(e) => onChange("incluyeITBIS", e.target.checked)} />
+                  ITBIS incluido
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Info de línea */}
       {item.descripcion && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingTop: 8, borderTop: "1px solid #f3f4f6" }}>
 
-          {hasTiers && item.pax > 0 && item.precio > 0 && (
+          {hasTiers && item.modo === "por_persona" && item.pax > 0 && item.precio > 0 && (
             <span style={{ fontSize: 11, color: "#374151", fontFamily: sans, fontWeight: 600 }}>
               {item.pax} pax × RD$ {fmt(item.precio)}/p.
+            </span>
+          )}
+
+          {hasTiers && item.precioManual && (
+            <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 3, fontFamily: sans, fontWeight: 600, background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a" }}>
+              Precio especial
             </span>
           )}
 
@@ -716,6 +829,7 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
               {items.map((item, i) => (
                 <LineaItem key={i} item={item} idx={i} total={items.length} servicios={servicios}
                   isPurchase={isPurchase}
+                  forceExento={TIPOS_SOLO_EXENTO.has(form.tipoECF)}
                   onChange={updateItem(i)}
                   onDelete={() => { if (items.length > 1) setItems((p) => p.filter((_, idx) => idx !== i)); }}
                   onSelectServicio={() => setShowServicios(i)} />

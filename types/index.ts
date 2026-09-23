@@ -186,6 +186,7 @@ export interface LineaServicio {
   descuentoMonto: number;     // RD$ de descuento sobre el bruto
   itbis:          number;
   incluyeITBIS?:  boolean;    // true → "precio" ya tiene el ITBIS adentro (precio final)
+  precioManual?:  boolean;    // true → "precio" fue escrito a mano, no recalcular por tramos/pax
   fechaTour?:     string;
 }
 
