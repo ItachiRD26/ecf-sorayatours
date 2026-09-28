@@ -1,14 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { doc, getDoc }  from "firebase/firestore";
+import { db }           from "@/lib/firebase";
 import { useFacturas }  from "@/hooks/usefacturas";
 import { useClientes }  from "@/hooks/useclientes";
 import { calcTotales, fmt, fmtDate } from "@/types";
+import type { Factura } from "@/types";
+import FacturaA4 from "@/components/print/FacturaA4";
 import Icon from "@/components/ui/icon";
 
 const sans  = "var(--font-sans)";
 const mono  = "var(--font-mono)";
 const serif = "var(--font-serif)";
+
+interface EmpresaConfig { nombre: string; rnc: string; direccion: string; telefono: string; firmaVendedor?: string; }
+
+// La API de File System Access (guardar directo en una carpeta) solo existe
+// en Chrome/Edge; TypeScript no la trae en sus libs por defecto.
+interface DirectoryPickerWindow extends Window {
+  showDirectoryPicker?: () => Promise<FileSystemDirectoryHandleLike>;
+}
+interface FileSystemDirectoryHandleLike {
+  getFileHandle(name: string, opts?: { create?: boolean }): Promise<FileSystemFileHandleLike>;
+}
+interface FileSystemFileHandleLike {
+  createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }>;
+}
 
 export default function ReportesPage() {
   const { facturas, loading } = useFacturas();
@@ -16,6 +34,18 @@ export default function ReportesPage() {
   const [desde, setDesde]     = useState("");
   const [hasta, setHasta]     = useState("");
   const [tipoFiltro, setTipoFiltro] = useState("");
+  const [empresa, setEmpresa] = useState<EmpresaConfig | null>(null);
+
+  // Descarga masiva de PDFs a una carpeta local
+  const [descargando, setDescargando]           = useState<{ actual: number; total: number } | null>(null);
+  const [facturaRenderizando, setFacturaRenderizando] = useState<Factura | null>(null);
+  const renderRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getDoc(doc(db, "config", "empresa")).then((snap) => {
+      if (snap.exists()) setEmpresa(snap.data() as EmpresaConfig);
+    });
+  }, []);
 
   const filtradas = facturas.filter((f) => {
     if (f.estado === "anulada")  return false;
@@ -24,6 +54,55 @@ export default function ReportesPage() {
     if (tipoFiltro && f.tipoECF !== tipoFiltro) return false;
     return true;
   });
+
+  const handleDescargarPDFs = async () => {
+    const picker = (window as DirectoryPickerWindow).showDirectoryPicker;
+    if (!picker) {
+      alert("Tu navegador no soporta guardar directo en una carpeta (usa Chrome o Edge).");
+      return;
+    }
+    const lista = filtradas;
+    if (lista.length === 0) return;
+
+    let dirHandle: FileSystemDirectoryHandleLike;
+    try {
+      dirHandle = await picker();
+    } catch {
+      return; // el usuario cerro el selector de carpeta
+    }
+
+    const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+      import("jspdf"), import("html2canvas"),
+    ]);
+
+    setDescargando({ actual: 0, total: lista.length });
+    for (let i = 0; i < lista.length; i++) {
+      const f = lista[i];
+      setFacturaRenderizando(f);
+      // esperar a que React pinte la factura fuera de pantalla antes de capturarla
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      const el = renderRef.current;
+      if (!el) continue;
+      const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+      const imgData = canvas.toDataURL("image/png");
+      const pageWmm = 210; // ancho A4; alto se ajusta al contenido para no cortar facturas largas
+      const pageHmm = (canvas.height * pageWmm) / canvas.width;
+      const pdf = new jsPDF({ unit: "mm", format: [pageWmm, pageHmm] });
+      pdf.addImage(imgData, "PNG", 0, 0, pageWmm, pageHmm);
+      const blob = pdf.output("blob");
+
+      const nombreArchivo = `${f.eCF}.pdf`;
+      const fileHandle = await dirHandle.getFileHandle(nombreArchivo, { create: true });
+      const writable   = await fileHandle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      setDescargando({ actual: i + 1, total: lista.length });
+    }
+    setFacturaRenderizando(null);
+    setDescargando(null);
+  };
 
   const exportar607 = () => {
     const header = ["RNC_COMPRADOR","TIPO_ID_COMPRADOR","TIPO_BIENES_SERVICIOS","NCF","NCF_MOD","FECHA_COMPROBANTE","FECHA_RETENCION","MONTO_FACTURADO","ITBIS_FACTURADO","ITBIS_RETENIDO","RETENCION_RENTA","ITBIS_PERCIBIDO","ISC","OTROS_IMPUESTOS","EXCENTO","PAGO_CONTADO","PAGO_CREDITO"];
@@ -135,7 +214,7 @@ export default function ReportesPage() {
       </div>
 
       {/* Exportar */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 20 }}>
         <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, padding: 24 }}>
           <div style={{ fontFamily: serif, fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 6 }}>Reporte 607 DGII</div>
           <div style={{ fontSize: 12, color: "#6b7280", fontFamily: sans, marginBottom: 16, lineHeight: 1.6 }}>
@@ -163,7 +242,36 @@ export default function ReportesPage() {
             <Icon name="download" size={14} /> Exportar CSV (.csv)
           </button>
         </div>
+
+        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 6, padding: 24 }}>
+          <div style={{ fontFamily: serif, fontSize: 15, fontWeight: 700, color: "#111", marginBottom: 6 }}>PDFs de las Facturas</div>
+          <div style={{ fontSize: 12, color: "#6b7280", fontFamily: sans, marginBottom: 16, lineHeight: 1.6 }}>
+            Genera un PDF por cada comprobante (formato A4) y lo guarda directo en una carpeta de tu PC. Solo Chrome / Edge.
+          </div>
+          <div style={{ background: "#f5f3ff", border: "1px solid #ddd6fe", borderRadius: 4, padding: "8px 12px", marginBottom: 16, fontSize: 11, color: "#6d28d9", fontFamily: sans }}>
+            {descargando
+              ? `Generando ${descargando.actual} de ${descargando.total}...`
+              : `${filtradas.length} PDF(s) a generar según los filtros de arriba`}
+          </div>
+          <button onClick={handleDescargarPDFs} disabled={filtradas.length === 0 || !!descargando}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", background: (filtradas.length === 0 || descargando) ? "#d1d5db" : "#6d28d9", color: "#fff", border: "none", borderRadius: 4, cursor: (filtradas.length === 0 || descargando) ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 500, fontFamily: sans }}>
+            <Icon name="download" size={14} /> {descargando ? "Generando..." : "Guardar PDFs en carpeta"}
+          </button>
+        </div>
       </div>
+
+      {/* Contenedor oculto: renderiza cada factura fuera de pantalla para capturarla como PDF */}
+      {facturaRenderizando && (
+        <div style={{ position: "fixed", left: -9999, top: 0, width: 794, zIndex: -1 }}>
+          <div ref={renderRef} style={{ background: "#fff", padding: "24px 28px" }}>
+            <FacturaA4
+              factura={facturaRenderizando}
+              cliente={clientes.find((c) => c.id === facturaRenderizando.clienteId)}
+              empresa={empresa ?? undefined}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Tabla preview */}
       {!loading && filtradas.length > 0 && (

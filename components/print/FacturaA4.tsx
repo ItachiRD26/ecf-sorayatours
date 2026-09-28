@@ -26,16 +26,17 @@ const DEFAULT_EMPRESA = {
   firmaVendedor: "Preparado por",
 };
 
-const COD_MOD_E34: Record<string, string> = {
-  "1": "Descuento",
-  "2": "Corrige Texto",
-  "3": "Devolucion",
-  "4": "Corrige montos del NCF modificado",
+// Valores segun XSD oficial DGII (e-CF 33/34 v.1.0.xsd, CodigoModificacionType)
+// — el mismo enum aplica a ambos tipos de nota.
+const COD_MOD: Record<string, string> = {
+  "1": "Anula el comprobante modificado",
+  "2": "Corrige Texto del Comprobante",
+  "3": "Corrige montos del comprobante",
+  "4": "Reemplazo por contingencia",
+  "5": "Referencia Factura de Consumo",
 };
-const COD_MOD_E33: Record<string, string> = {
-  "1": "Mora", "2": "Corrige Texto", "3": "Descuento",
-  "4": "Gastos", "5": "Interes", "6": "Otros",
-};
+const COD_MOD_E34 = COD_MOD;
+const COD_MOD_E33 = COD_MOD;
 
 function descModificacion(tipoECF: string, cod?: string, motivo?: string): string {
   if (motivo) return motivo;
