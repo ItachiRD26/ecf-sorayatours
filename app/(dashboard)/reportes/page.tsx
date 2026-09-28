@@ -7,7 +7,8 @@ import { useFacturas }  from "@/hooks/usefacturas";
 import { useClientes }  from "@/hooks/useclientes";
 import { calcTotales, fmt, fmtDate } from "@/types";
 import type { Factura } from "@/types";
-import FacturaA4 from "@/components/print/FacturaA4";
+import FacturaA4      from "@/components/print/FacturaA4";
+import FacturaTermica from "@/components/print/FacturaTermica";
 import Icon from "@/components/ui/icon";
 
 const sans  = "var(--font-sans)";
@@ -27,6 +28,11 @@ interface FileSystemDirectoryHandleLike {
 interface FileSystemFileHandleLike {
   createWritable(): Promise<{ write(data: Blob): Promise<void>; close(): Promise<void> }>;
 }
+
+// E32 (Factura de Consumo) se imprime en ticket termico 88mm en este negocio
+// (igual que en PrintModal); el resto usa A4.
+const ANCHO_A4_PX      = 794; // ~210mm a 96dpi
+const ANCHO_TERMICA_PX = 340; // FacturaTermica tiene maxWidth: 332px interno
 
 export default function ReportesPage() {
   const { facturas, loading } = useFacturas();
@@ -84,9 +90,22 @@ export default function ReportesPage() {
 
       const el = renderRef.current;
       if (!el) continue;
-      const canvas  = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+      // x/y/scrollX/scrollY/windowWidth/windowHeight fijos: sin esto, html2canvas
+      // ubica mal un elemento posicionado fuera de pantalla (position: fixed con
+      // left negativo) y recorta el contenido que "cree" que quedo fuera del
+      // viewport, cortando columnas de la tabla o el total.
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        x: 0, y: 0,
+        scrollX: 0, scrollY: 0,
+        windowWidth:  el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
       const imgData = canvas.toDataURL("image/png");
-      const pageWmm = 210; // ancho A4; alto se ajusta al contenido para no cortar facturas largas
+      // ancho de pagina segun el formato real de impresion de este tipo de e-CF;
+      // el alto se ajusta al contenido para no cortar facturas largas
+      const pageWmm = f.tipoECF === "E32" ? 88 : 210;
       const pageHmm = (canvas.height * pageWmm) / canvas.width;
       const pdf = new jsPDF({ unit: "mm", format: [pageWmm, pageHmm] });
       pdf.addImage(imgData, "PNG", 0, 0, pageWmm, pageHmm);
@@ -260,18 +279,32 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* Contenedor oculto: renderiza cada factura fuera de pantalla para capturarla como PDF */}
-      {facturaRenderizando && (
-        <div style={{ position: "fixed", left: -9999, top: 0, width: 794, zIndex: -1 }}>
-          <div ref={renderRef} style={{ background: "#fff", padding: "24px 28px" }}>
-            <FacturaA4
-              factura={facturaRenderizando}
-              cliente={clientes.find((c) => c.id === facturaRenderizando.clienteId)}
-              empresa={empresa ?? undefined}
-            />
+      {/* Contenedor oculto: renderiza cada factura fuera de pantalla para capturarla como PDF.
+          E32 (Consumo) se genera en formato ticket 88mm, igual que se imprime de verdad;
+          el resto en A4 — mismo criterio que usa PrintModal. */}
+      {facturaRenderizando && (() => {
+        const esTermica = facturaRenderizando.tipoECF === "E32";
+        const cliente   = clientes.find((c) => c.id === facturaRenderizando.clienteId);
+        return (
+          <div style={{ position: "fixed", left: -9999, top: 0, width: esTermica ? ANCHO_TERMICA_PX : ANCHO_A4_PX, zIndex: -1 }}>
+            <div ref={renderRef} style={{ background: "#fff", padding: esTermica ? "16px 4px" : "24px 28px" }}>
+              {esTermica ? (
+                <FacturaTermica
+                  factura={facturaRenderizando}
+                  cliente={cliente}
+                  empresa={empresa ? { nombre: empresa.nombre, rnc: empresa.rnc, direccion: empresa.direccion, telefono: empresa.telefono } : undefined}
+                />
+              ) : (
+                <FacturaA4
+                  factura={facturaRenderizando}
+                  cliente={cliente}
+                  empresa={empresa ?? undefined}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Tabla preview */}
       {!loading && filtradas.length > 0 && (
