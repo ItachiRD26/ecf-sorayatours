@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Factura, LineaServicio, Cliente } from "@/types";
 import { fmt, today, calcLinea, calcTotales, genECF, ITBIS_RATES } from "@/types";
 import { nextSecuencia } from "@/hooks/usesecuencias";
@@ -74,21 +74,33 @@ export default function ModalNota({ tipo, facturaRef, clientes, facturas, onSave
   const setItem = <K extends keyof LineaServicio>(i: number, k: K, v: LineaServicio[K]) =>
     setItems((prev) => prev.map((item, idx) => idx === i ? { ...item, [k]: v } : item));
 
+  // Bloqueo sincrono contra doble-click/doble-submit: igual que en
+  // ModalNuevaFactura, "saving" del padre llega con un render de por medio y
+  // aqui hay un await (nextSecuencia) antes de llamar a onSave -- sin esto,
+  // un doble click podia sacar dos secuencias y emitir la nota dos veces.
+  const emitiendoRef = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.every((i) => !i.descripcion)) return alert("Agrega al menos un concepto");
-    const seq = await nextSecuencia(tipo);
-    const eCF = genECF(tipo, seq);
-    await onSave(clean({
-      noFactura: String(seq), eCF, tipoECF: tipo,
-      fecha: today(), vencimientoECF: facturaRef.vencimientoECF,
-      terminos: facturaRef.terminos, clienteId: facturaRef.clienteId,
-      eCFRef: facturaRef.eCF, motivoNota: motivo, estado: "pagada" as const,
-      ...(esCredito ? { codigoModificacion: codMod } : {}),
-      items: items.filter((i) => i.descripcion), notas: notas || undefined,
-      esConsumidorFinal: facturaRef.esConsumidorFinal,
-      nombreConsumidor:  facturaRef.nombreConsumidor,
-    }) as Omit<Factura, "id">);
+    if (emitiendoRef.current) return;
+    emitiendoRef.current = true;
+    try {
+      const seq = await nextSecuencia(tipo);
+      const eCF = genECF(tipo, seq);
+      await onSave(clean({
+        noFactura: String(seq), eCF, tipoECF: tipo,
+        fecha: today(), vencimientoECF: facturaRef.vencimientoECF,
+        terminos: facturaRef.terminos, clienteId: facturaRef.clienteId,
+        eCFRef: facturaRef.eCF, motivoNota: motivo, estado: "pagada" as const,
+        ...(esCredito ? { codigoModificacion: codMod } : {}),
+        items: items.filter((i) => i.descripcion), notas: notas || undefined,
+        esConsumidorFinal: facturaRef.esConsumidorFinal,
+        nombreConsumidor:  facturaRef.nombreConsumidor,
+      }) as Omit<Factura, "id">);
+    } finally {
+      emitiendoRef.current = false;
+    }
   };
 
   const accentBg     = esCredito ? "#f0faf4" : "#fffbeb";

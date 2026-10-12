@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { Cotizacion, LineaServicio, Cliente, Servicio, ModoLinea } from "@/types";
 import { fmt, today, localDate, calcLinea, calcTotales, genCOT, labelModo, getTierPrice } from "@/types";
 import Modal               from "@/components/modals/modal";
@@ -64,23 +64,33 @@ export default function ModalNuevaCotizacion({ clientes, servicios, cotizaciones
     updateItem(i)("pax", pax);
   };
 
+  // Bloqueo sincrono contra doble-click/doble-submit (ver mismo patron en
+  // ModalNuevaFactura y ModalNota).
+  const guardandoRef = useRef(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clienteId)                         return alert("Selecciona un cliente");
     if (items.every((i) => !i.descripcion)) return alert("Agrega al menos un servicio");
-    const vencDate = new Date();
-    vencDate.setDate(vencDate.getDate() + parseInt(validez || "30"));
-    const seq = cotizaciones.length + 1;
-    await onSave({
-      noCotizacion: genCOT(seq),
-      fecha:        today(),
-      vencimiento:  localDate(vencDate),
-      validez:      (validez + " dias"),
-      clienteId,
-      estado:       "vigente",
-      items:        items.filter((i) => i.descripcion),
-      notas:        notas || undefined,
-    });
+    if (guardandoRef.current) return;
+    guardandoRef.current = true;
+    try {
+      const vencDate = new Date();
+      vencDate.setDate(vencDate.getDate() + parseInt(validez || "30"));
+      const seq = cotizaciones.length + 1;
+      await onSave({
+        noCotizacion: genCOT(seq),
+        fecha:        today(),
+        vencimiento:  localDate(vencDate),
+        validez:      (validez + " dias"),
+        clienteId,
+        estado:       "vigente",
+        items:        items.filter((i) => i.descripcion),
+        notas:        notas || undefined,
+      });
+    } finally {
+      guardandoRef.current = false;
+    }
   };
 
   const lockedStyle: React.CSSProperties = {

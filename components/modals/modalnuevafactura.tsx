@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { Factura, LineaServicio, Cliente, Servicio, ModoLinea } from "@/types";
 import {
   fmt, today, localDate, calcLinea, calcTotales,
@@ -513,40 +513,53 @@ export default function ModalNuevaFactura({ clientes, servicios, facturas, onSav
     setShowConfirmacion(true);
   };
 
+  // Bloqueo sincrono contra doble-click: "saving" del padre llega con un render
+  // de por medio, y handleEmitir hace un await (nextSecuencia) antes de siquiera
+  // llamar a onSave -- dos clics rapidos entraban ambos antes de que el boton se
+  // deshabilitara, sacaban cada uno su propia secuencia y emitian la factura dos
+  // veces. Un ref se actualiza al instante, sin esperar un re-render.
+  const emitiendoRef = useRef(false);
+
   const handleEmitir = async () => {
-    const fechaVencPago = !esContado
-      ? (() => { const d = new Date(); d.setDate(d.getDate() + diasPlazo); return localDate(d); })()
-      : undefined;
-    const seq = await nextSecuencia(form.tipoECF);
-    const eCF = genECF(form.tipoECF, seq);
+    if (emitiendoRef.current) return;
+    emitiendoRef.current = true;
+    try {
+      const fechaVencPago = !esContado
+        ? (() => { const d = new Date(); d.setDate(d.getDate() + diasPlazo); return localDate(d); })()
+        : undefined;
+      const seq = await nextSecuencia(form.tipoECF);
+      const eCF = genECF(form.tipoECF, seq);
 
-    // idTransaccion: E47 → ID extranjero del beneficiario; demás → ref de pago
-    const idTransaccionValue = form.tipoECF === "E47" && idExtranjero
-      ? idExtranjero
-      : (esContado && referencia) ? referencia : undefined;
+      // idTransaccion: E47 → ID extranjero del beneficiario; demás → ref de pago
+      const idTransaccionValue = form.tipoECF === "E47" && idExtranjero
+        ? idExtranjero
+        : (esContado && referencia) ? referencia : undefined;
 
-    await onSave(clean({
-      noFactura: String(seq), eCF, tipoECF: form.tipoECF,
-      fecha: form.fecha, vencimientoECF: form.vencimientoECF,
-      terminos: esContado ? "Contado" : plazoCredito,
-      clienteId: esWalkIn ? "walk-in" : (form.clienteId || "walk-in"),
-      cotizacionRef: form.cotizacionRef || undefined,
-      estado: esContado ? "pagada" : "pendiente",
-      metodoPago: esContado ? form.metodoPago : undefined,
-      idTransaccion: idTransaccionValue,
-      modalidadPago: esContado ? "unico" : "plazo",
-      fechaVencimientoPago: fechaVencPago,
-      esConsumidorFinal: esWalkIn,
-      nombreConsumidor:  esWalkIn ? (nombreWalkIn || (esCompra ? "BENEFICIARIO EXTERIOR" : "Consumidor Final")) : undefined,
-      telefonoConsumidor: (!esCompra && esWalkIn) ? (telefonoWalkIn || undefined) : undefined,
-      rncCompradorOcasional: (necesitaIdentificacion && rncOcasional.trim()) ? rncOcasional.trim() : undefined,
-      esExtranjeroComprador: (necesitaIdentificacion && esExtranjeroOcasional) ? true : undefined,
-      items: items.filter((i) => i.descripcion),
-      notas: notas || undefined,
-      abonoInicialMonto:  (!esContado && tieneAbonoInicial && montoAbonoInicial > 0) ? montoAbonoInicial  : undefined,
-      abonoInicialMetodo: (!esContado && tieneAbonoInicial && montoAbonoInicial > 0) ? metodoAbonoInicial : undefined,
-      abonoInicialRef:    (!esContado && tieneAbonoInicial && refAbonoInicial)        ? refAbonoInicial    : undefined,
-    }) as Omit<Factura, "id">);
+      await onSave(clean({
+        noFactura: String(seq), eCF, tipoECF: form.tipoECF,
+        fecha: form.fecha, vencimientoECF: form.vencimientoECF,
+        terminos: esContado ? "Contado" : plazoCredito,
+        clienteId: esWalkIn ? "walk-in" : (form.clienteId || "walk-in"),
+        cotizacionRef: form.cotizacionRef || undefined,
+        estado: esContado ? "pagada" : "pendiente",
+        metodoPago: esContado ? form.metodoPago : undefined,
+        idTransaccion: idTransaccionValue,
+        modalidadPago: esContado ? "unico" : "plazo",
+        fechaVencimientoPago: fechaVencPago,
+        esConsumidorFinal: esWalkIn,
+        nombreConsumidor:  esWalkIn ? (nombreWalkIn || (esCompra ? "BENEFICIARIO EXTERIOR" : "Consumidor Final")) : undefined,
+        telefonoConsumidor: (!esCompra && esWalkIn) ? (telefonoWalkIn || undefined) : undefined,
+        rncCompradorOcasional: (necesitaIdentificacion && rncOcasional.trim()) ? rncOcasional.trim() : undefined,
+        esExtranjeroComprador: (necesitaIdentificacion && esExtranjeroOcasional) ? true : undefined,
+        items: items.filter((i) => i.descripcion),
+        notas: notas || undefined,
+        abonoInicialMonto:  (!esContado && tieneAbonoInicial && montoAbonoInicial > 0) ? montoAbonoInicial  : undefined,
+        abonoInicialMetodo: (!esContado && tieneAbonoInicial && montoAbonoInicial > 0) ? metodoAbonoInicial : undefined,
+        abonoInicialRef:    (!esContado && tieneAbonoInicial && refAbonoInicial)        ? refAbonoInicial    : undefined,
+      }) as Omit<Factura, "id">);
+    } finally {
+      emitiendoRef.current = false;
+    }
   };
 
   // Label según modo
