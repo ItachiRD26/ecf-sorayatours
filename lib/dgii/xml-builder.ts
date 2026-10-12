@@ -126,12 +126,22 @@ function idDocE33(f: Factura, inclMontoGrav = false): string {
   </IdDoc>`;
 }
 
-function idDocE34(f: Factura, inclMontoGrav = false): string {
-  // IndicadorNotaCredito: 0 si la fecha de emisión es <= 30 días calendario, 1 si > 30 días
-  const parts = fmtFecha(f.fecha).split("-"); // DD-MM-YYYY
-  const emision = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-  const diffDays = (Date.now() - emision.getTime()) / 86400000;
-  const indNotaC = diffDays <= 30 ? "0" : "1";
+// DD-MM-YYYY (formato de fmtFecha) → Date
+function parseFechaDMY(fechaDMY: string): Date {
+  const [d, m, y] = fechaDMY.split("-");
+  return new Date(`${y}-${m}-${d}`);
+}
+
+function idDocE34(f: Factura, inclMontoGrav = false, fechaOriginal?: string): string {
+  // IndicadorNotaCredito: 0 si la nota se emite <= 30 dias calendario despues
+  // de la factura que modifica, 1 si pasaron mas de 30 dias. DGII valida esto
+  // contra la fecha real del eNCF referenciado (NCFModificado), no contra la
+  // fecha de la propia nota -- compararla consigo misma (como estaba antes)
+  // siempre daba ~0 dias y quedaba "no valido" para facturas originales viejas.
+  const notaDate = parseFechaDMY(fmtFecha(f.fecha));
+  const origDate  = parseFechaDMY(fmtFecha(fechaOriginal ?? f.fecha));
+  const diffDays  = (notaDate.getTime() - origDate.getTime()) / 86400000;
+  const indNotaC  = diffDays <= 30 ? "0" : "1";
   return `<IdDoc>
     <TipoeCF>34</TipoeCF>
     <eNCF>${f.eCF}</eNCF>
@@ -406,10 +416,13 @@ function totalesE47(f: Factura): string {
 
 // ── InformacionReferencia (E33/E34) ───────────────────────────────
 // XSD E33: NCFModificado(1) → FechaNCFModificado(1) → CodigoModificacion(1) → RazonModificacion(0)
-function infoRef(f: Factura, codMod: string): string {
+function infoRef(f: Factura, codMod: string, fechaOriginal?: string): string {
+  // FechaNCFModificado es la fecha de emision del eNCF ORIGINAL que esta
+  // nota corrige, no la fecha de la propia nota -- antes se mandaba f.fecha
+  // (la de la nota) por error.
   return `<InformacionReferencia>
     <NCFModificado>${f.eCFRef ?? ""}</NCFModificado>
-    <FechaNCFModificado>${fmtFecha(f.fecha)}</FechaNCFModificado>
+    <FechaNCFModificado>${fmtFecha(fechaOriginal ?? f.fecha)}</FechaNCFModificado>
     <CodigoModificacion>${codMod}</CodigoModificacion>
     ${f.motivoNota ? `<RazonModificacion>${escapeXml(f.motivoNota.substring(0, 90))}</RazonModificacion>` : ""}
   </InformacionReferencia>`;
@@ -462,7 +475,7 @@ function buildE32(f: Factura, cliente: Cliente | undefined, e: EmpresaConfig, fh
 </ECF>`;
 }
 
-function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
+function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string, fechaOriginal?: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
   const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -477,19 +490,19 @@ function buildE33(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
-  ${infoRef(f, "3")}
+  ${infoRef(f, "3", fechaOriginal)}
   <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
 
-function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string): string {
+function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: string, fechaOriginal?: string): string {
   const comp = c ? compradorB2B(c) : compradorConsumidor(f);
   const hasITBIS = calcTotales(f.items).itbis > 0;
   return `<?xml version="1.0" encoding="UTF-8"?>
 <ECF>
   <Encabezado>
     <Version>${VERSION}</Version>
-    ${idDocE34(f, hasITBIS)}
+    ${idDocE34(f, hasITBIS, fechaOriginal)}
     ${buildEmisor(e, f.fecha)}
     ${comp}
     ${totalesGravados(f)}
@@ -497,7 +510,7 @@ function buildE34(f: Factura, c: Cliente | undefined, e: EmpresaConfig, fh: stri
   <DetallesItems>
     ${buildItems(f.items)}
   </DetallesItems>
-  ${infoRef(f, f.codigoModificacion ?? "1")}
+  ${infoRef(f, f.codigoModificacion ?? "1", fechaOriginal)}
   <FechaHoraFirma>${fh}</FechaHoraFirma>
 </ECF>`;
 }
@@ -644,13 +657,16 @@ function buildRFCE(f: Factura, e: EmpresaConfig, codigoSeguridad: string = "", c
 
 // ── EXPORTACIÓN PRINCIPAL ─────────────────────────────────────────
 
-export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: EmpresaConfig): string {
+// fechaOriginal: fecha (YYYY-MM-DD) de la factura referenciada en f.eCFRef,
+// solo relevante para E33/E34 -- la busca el llamador (emitir/route.ts) porque
+// aqui no hay acceso a Firestore.
+export function buildXML(f: Factura, cliente: Cliente | undefined, empresa: EmpresaConfig, fechaOriginal?: string): string {
   const fh = nowFechaHoraFirma();
   switch (f.tipoECF) {
     case "E31": return buildE31(f, cliente!, empresa, fh);
     case "E32": return buildE32(f, cliente, empresa, fh);
-    case "E33": return buildE33(f, cliente, empresa, fh);
-    case "E34": return buildE34(f, cliente, empresa, fh);
+    case "E33": return buildE33(f, cliente, empresa, fh, fechaOriginal);
+    case "E34": return buildE34(f, cliente, empresa, fh, fechaOriginal);
     case "E41": return buildE41(f, cliente!, empresa, fh);
     case "E43": return buildE43(f, empresa, fh);
     case "E44": return buildE44(f, cliente, empresa, fh);

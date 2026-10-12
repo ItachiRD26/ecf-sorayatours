@@ -81,8 +81,17 @@ export async function POST(req: NextRequest) {
       console.warn("[DGII/emitir] vencimientoECF vacío — usando fallback:", factura.vencimientoECF);
     }
 
+    // 5.5. Para notas (E33/E34): buscar la fecha real de la factura referenciada.
+    // DGII valida IndicadorNotaCredito/FechaNCFModificado contra esa fecha, no
+    // contra la fecha de la propia nota.
+    let fechaOriginal: string | undefined;
+    if ((factura.tipoECF === "E33" || factura.tipoECF === "E34") && factura.eCFRef) {
+      const refSnap = await adminDb.collection("facturas").where("eCF", "==", factura.eCFRef).limit(1).get();
+      fechaOriginal = refSnap.empty ? undefined : (refSnap.docs[0].data() as Factura).fecha;
+    }
+
     // 6. Construir + firmar XML principal
-    const xmlSinFirma = buildXML(factura, cliente, empresa);
+    const xmlSinFirma = buildXML(factura, cliente, empresa, fechaOriginal);
     const xmlFirmado  = await firmarXML(xmlSinFirma);
 
     // 7. Extraer SignatureValue para el QR y el código de seguridad
